@@ -1,14 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const otpGenerator = require('otp-generator');
 const multer = require('multer');
-const chalk = require('chalk');
-const cloudinary = require('../utils/cloudinary');
-const { sendOTP } = require('../utils/email');
-const config = require('../config/config');
-const { MarketUser, MarketSeller } = require('../models/MarketUser');
-const MarketOTP = require('../models/MarketOTP');
+const { auth, isAdmin, isSeller } = require('../middleware/auth');
+const authController = require('../controllers/auth.controller');
+const adminController = require('../controllers/admin.controller');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -48,41 +43,7 @@ const upload = multer({ storage: multer.memoryStorage() });
  *       400:
  *         description: Bad request
  */
-router.post('/register/seller', upload.single('governmentId'), async (req, res) => {
-    try {
-        const { email } = req.body;
-        const existingUser = await MarketUser.findOne({ email });
-        
-        if (existingUser) {
-            return res.status(400).json({ message: 'Email already registered' });
-        }
-
-        // Upload ID to Cloudinary
-        const result = await cloudinary.uploader.upload(req.file.buffer.toString('base64'), {
-            folder: 'government_ids',
-        });
-
-        const seller = new MarketSeller({
-            ...req.body,
-            role: 'seller',
-            governmentId: result.secure_url,
-        });
-
-        // Generate and save OTP
-        const otp = otpGenerator.generate(6, { digits: true, alphabets: false, upperCase: false });
-        await new MarketOTP({ email, otp, userType: 'seller' }).save();
-        
-        // Send OTP email
-        await sendOTP(email, otp);
-        await seller.save();
-
-        console.log(chalk.green('✓ Seller registered successfully'));
-        res.status(201).json({ message: 'Registration successful. Please verify your email.' });
-    } catch (error) {
-        console.error(chalk.red('✗ Registration failed:', error));
-        res.status(400).json({ message: error.message });
-    }
-});
+router.post('/register/seller', upload.single('governmentId'), authController.registerSeller);
 
 /**
  * @swagger
@@ -107,28 +68,7 @@ router.post('/register/seller', upload.single('governmentId'), async (req, res) 
  *       400:
  *         description: Invalid OTP
  */
-router.post('/verify-otp', async (req, res) => {
-    try {
-        const { email, otp } = req.body;
-        const otpRecord = await MarketOTP.findOne({ email, otp });
-        
-        if (!otpRecord) {
-            return res.status(400).json({ message: 'Invalid OTP' });
-        }
-
-        const user = await MarketUser.findOne({ email });
-        user.isVerified = true;
-        await user.save();
-        await MarketOTP.deleteOne({ email, otp });
-
-        const token = jwt.sign({ id: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '24h' });
-        console.log(chalk.green('✓ User verified successfully'));
-        res.json({ token });
-    } catch (error) {
-        console.error(chalk.red('✗ OTP verification failed:', error));
-        res.status(400).json({ message: error.message });
-    }
-});
+router.post('/verify-otp', authController.verifyOTP);
 
 /**
  * @swagger
@@ -153,26 +93,188 @@ router.post('/verify-otp', async (req, res) => {
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', async (req, res) => {
+router.post('/login', authController.login);
+
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   get:
+ *     summary: Get user profile
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile data
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/profile', auth, authController.getProfile);
+
+/**
+ * @swagger
+ * /api/auth/profile/seller:
+ *   patch:
+ *     summary: Update seller profile
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               businessName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               businessAddress:
+ *                 type: string
+ *               governmentId:
+ *                 type: string
+ *                 format: binary
+ */
+router.patch('/profile/seller', auth, isSeller, upload.single('governmentId'), async (req, res) => {
     try {
-        const { email, password } = req.body;
-        const user = await MarketUser.findOne({ email });
-
-        if (!user || !(await user.comparePassword(password))) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+        const updates = { ...req.body };
+        const allowedUpdates = ['businessName', 'phoneNumber', 'businessAddress', 'fullName'];
+        const updateKeys = Object.keys(updates);
+        
+        const isValidOperation = updateKeys.every(update => allowedUpdates.includes(update));
+        if (!isValidOperation) {
+            return res.status(400).json({ 
+                message: 'Invalid updates',
+                allowedUpdates 
+            });
         }
 
-        if (user.role === 'customer') {
-            return res.status(403).json({ message: 'Customer login not allowed' });
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file, 'government_ids');
+            updates.governmentId = result.secure_url;
         }
 
-        const token = jwt.sign({ id: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '24h' });
-        console.log(chalk.green(`✓ ${user.role} logged in successfully`));
-        res.json({ token, role: user.role });
+        const seller = await MarketUser.findByIdAndUpdate(
+            req.user._id,
+            updates,
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        console.log(chalk.green('✓ Seller profile updated successfully'));
+        res.json(seller);
     } catch (error) {
-        console.error(chalk.red('✗ Login failed:', error));
+        console.error(chalk.red('✗ Profile update failed:', error));
         res.status(400).json({ message: error.message });
     }
 });
+
+/**
+ * @swagger
+ * /api/auth/profile/admin:
+ *   patch:
+ *     summary: Update admin profile
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ */
+router.patch('/profile/admin', auth, isAdmin, async (req, res) => {
+    try {
+        const updates = { ...req.body };
+        const allowedUpdates = ['fullName', 'phoneNumber'];
+        const updateKeys = Object.keys(updates);
+        
+        const isValidOperation = updateKeys.every(update => allowedUpdates.includes(update));
+        if (!isValidOperation) {
+            return res.status(400).json({ 
+                message: 'Invalid updates',
+                allowedUpdates 
+            });
+        }
+
+        const admin = await MarketUser.findByIdAndUpdate(
+            req.user._id,
+            updates,
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        console.log(chalk.green('✓ Admin profile updated successfully'));
+        res.json(admin);
+    } catch (error) {
+        console.error(chalk.red('✗ Profile update failed:', error));
+        res.status(400).json({ message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/auth/register/admin:
+ *   post:
+ *     summary: One-time admin registration
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               setupKey:
+ *                 type: string
+ */
+router.post('/register/admin', adminController.registerAdmin);
+
+/**
+ * @swagger
+ * /api/auth/admin/users:
+ *   get:
+ *     summary: Get all users (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [seller, admin]
+ *       - in: query
+ *         name: isVerified
+ *         schema:
+ *           type: boolean
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of users
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/admin/users', auth, isAdmin, adminController.getAllUsers);
 
 module.exports = router;

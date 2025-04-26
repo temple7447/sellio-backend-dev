@@ -24,9 +24,13 @@
     "nodemailer": "^6.9.7",
     "otp-generator": "^4.0.1",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "swagger-ui-express": "^5.0.0",
+    "express-rate-limit": "^7.1.4",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "winston": "^3.11.0",
+    "compression": "^1.7.4",
+    "express-mongo-sanitize": "^2.2.0",
+    "xss-clean": "^0.1.4"
   }
 }

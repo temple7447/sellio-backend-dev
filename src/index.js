@@ -7,8 +7,12 @@ const swaggerSpec = require('./config/swagger');
 const config = require('./config/config');
 const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/product.routes');
+const securityMiddleware = require('./middleware/security');
 
 const app = express();
+
+// Apply security middleware
+securityMiddleware(app);
 
 app.use(cors());
 app.use(express.json());
