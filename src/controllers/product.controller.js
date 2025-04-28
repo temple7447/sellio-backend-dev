@@ -43,6 +43,26 @@ class ProductController {
         }
     }
 
+    async getProductById(req, res) {
+        try {
+            const product = await productService.getProductById(req.params.id);
+            res.json(product);
+        } catch (error) {
+            console.error(chalk.red('✗ Product fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getPublicProductById(req, res) {
+        try {
+            const product = await productService.getPublicProductById(req.params.id);
+            res.json(product);
+        } catch (error) {
+            console.error(chalk.red('✗ Public product fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async updateProduct(req, res) {
         try {
             const product = await productService.updateProduct(req.params.id, req.user._id, req.body);

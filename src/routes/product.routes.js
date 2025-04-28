@@ -93,4 +93,46 @@ router.get('/admin/list', auth, isAdmin, productController.getAdminProducts);
 router.patch('/:id', auth, isSeller, productController.updateProduct);
 router.delete('/:id', auth, isSeller, productController.deleteProduct);
 
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   get:
+ *     summary: Get product by ID (authenticated)
+ *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Product details
+ *       404:
+ *         description: Product not found
+ */
+router.get('/:id', auth, productController.getProductById);
+
+/**
+ * @swagger
+ * /api/products/public/{id}:
+ *   get:
+ *     summary: Get public product by ID
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Product details
+ *       404:
+ *         description: Product not found
+ */
+router.get('/public/:id', productController.getPublicProductById);
+
 module.exports = router;

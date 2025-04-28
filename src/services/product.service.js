@@ -4,48 +4,47 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 
 class ProductService {
     async createProduct(sellerId, productData, files) {
-        // Validate price structure
-        if (!productData.price || typeof productData.price !== 'object') {
-            throw { 
-                status: 400, 
-                message: 'Invalid price structure. Expected: { current: number, discount?: number }' 
-            };
-        }
-
-        // Convert price.current to number if it's a string
-        if (typeof productData.price.current === 'string') {
-            productData.price.current = parseFloat(productData.price.current);
-        }
-
-        if (!productData.price.current || isNaN(productData.price.current)) {
-            throw { status: 400, message: 'Valid price.current is required' };
-        }
-
-        // Validate and get category
-        if (!productData.category) {
-            throw { status: 400, message: 'Category is required' };
-        }
-
-        try {
-            // Try to find category by name first
-            let category = await MarketCategory.findOne({ 
-                name: { $regex: new RegExp(productData.category, 'i') }
-            });
-
-            if (!category) {
-                // If not found by name, try by ID
-                category = await MarketCategory.findById(productData.category);
+        // Validate all required fields
+        const requiredFields = ['name', 'description', 'price'];
+        for (const field of requiredFields) {
+            if (!productData[field]) {
+                throw { 
+                    status: 400, 
+                    message: `Missing required field: ${field}`,
+                    required: requiredFields
+                };
             }
-
-            if (!category) {
-                throw { status: 400, message: `Category '${productData.category}' not found` };
-            }
-
-            productData.category = category._id;
-        } catch (error) {
-            if (error.status) throw error;
-            throw { status: 400, message: 'Invalid category' };
         }
+
+        // Validate and parse price
+        const price = {
+            current: parseFloat(productData.price) || 0,
+            discount: parseFloat(productData.discount) || 0
+        };
+
+        if (price.current <= 0) {
+            throw { status: 400, message: 'Price must be greater than 0' };
+        }
+
+        if (price.discount < 0 || price.discount > 100) {
+            throw { status: 400, message: 'Discount must be between 0 and 100' };
+        }
+
+        // Validate inventory
+        const inventory = {
+            quantity: parseInt(productData.initialInventory) || 0,
+            sku: productData.sku || null,
+            lowStockAlert: 5 // default value
+        };
+
+        if (inventory.quantity < 0) {
+            throw { status: 400, message: 'Initial inventory cannot be negative' };
+        }
+
+        // Validate and process tags
+        const tags = productData.tags ? 
+            productData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : 
+            [];
 
         // Handle image upload
         const imageUrls = [];
@@ -53,19 +52,62 @@ class ProductService {
             throw { status: 400, message: 'At least one product image is required' };
         }
 
-        for (const file of files) {
-            const result = await uploadToCloudinary(file, 'products');
-            imageUrls.push({ url: result.secure_url, isDefault: imageUrls.length === 0 });
+        if (files.length > 5) {
+            throw { status: 400, message: 'Maximum 5 images allowed per product' };
         }
 
-        const product = new MarketProduct({
-            ...productData,
-            sellerId,
-            images: imageUrls,
-            status: 'active'
-        });
+        for (const file of files) {
+            const result = await uploadToCloudinary(file, 'products');
+            imageUrls.push({ 
+                url: result.secure_url, 
+                isDefault: imageUrls.length === 0 
+            });
+        }
 
-        return await product.save();
+        // Process category
+        if (!productData.category) {
+            throw { status: 400, message: 'Category is required' };
+        }
+
+        try {
+            const category = await MarketCategory.findOne({ 
+                name: { $regex: new RegExp(productData.category, 'i') }
+            }) || await MarketCategory.findById(productData.category);
+
+            if (!category) {
+                throw { status: 400, message: `Category '${productData.category}' not found` };
+            }
+
+            // Create and save the product
+            const product = new MarketProduct({
+                name: productData.name,
+                description: productData.description,
+                price: {
+                    current: price.current,
+                    discount: price.discount
+                },
+                category: category._id,
+                inventory,
+                images: imageUrls,
+                sellerId,
+                status: 'active',
+                metadata: {
+                    tags,
+                    sku: inventory.sku
+                }
+            });
+
+            const savedProduct = await product.save();
+            
+            // Return with populated category
+            return await MarketProduct.findById(savedProduct._id)
+                .populate('category', 'name')
+                .populate('sellerId', 'businessName');
+
+        } catch (error) {
+            if (error.status) throw error;
+            throw { status: 400, message: 'Invalid category or product data' };
+        }
     }
 
     async getSellerProducts(sellerId) {
@@ -146,6 +188,41 @@ class ProductService {
         if (!product) {
             throw { status: 404, message: 'Product not found' };
         }
+
+        return product;
+    }
+
+    async getProductById(productId) {
+        const product = await MarketProduct.findById(productId)
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName');
+            
+        if (!product) {
+            throw { status: 404, message: 'Product not found' };
+        }
+
+        // Increment view count
+        product.metadata.views += 1;
+        await product.save();
+
+        return product;
+    }
+
+    async getPublicProductById(productId) {
+        const product = await MarketProduct.findOne({ 
+            _id: productId,
+            status: 'active'
+        })
+        .populate('category', 'name')
+        .populate('sellerId', 'businessName');
+
+        if (!product) {
+            throw { status: 404, message: 'Product not found' };
+        }
+
+        // Increment view count
+        product.metadata.views += 1;
+        await product.save();
 
         return product;
     }
