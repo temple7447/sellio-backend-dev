@@ -29,11 +29,25 @@ const categorySchema = new mongoose.Schema({
     timestamps: true
 });
 
+// Update slug generation middleware
 categorySchema.pre('save', function(next) {
     if (this.isModified('name')) {
-        this.slug = this.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        this.slug = this.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
     }
     next();
 });
+
+// Add static method for slug generation
+categorySchema.statics.generateSlug = function(name) {
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+};
 
 module.exports = mongoose.model('MarketCategory', categorySchema);

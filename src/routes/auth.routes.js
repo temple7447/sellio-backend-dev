@@ -149,9 +149,10 @@ router.patch('/profile/seller', auth, isSeller, upload.single('governmentId'), a
             });
         }
 
+        // Upload new government ID to Cloudinary if provided
         if (req.file) {
-            const result = await uploadToCloudinary(req.file, 'government_ids');
-            updates.governmentId = result.secure_url;
+            const cloudinaryResult = await uploadToCloudinary(req.file, 'government_ids');
+            updates.governmentId = cloudinaryResult.secure_url;
         }
 
         const seller = await MarketUser.findByIdAndUpdate(
