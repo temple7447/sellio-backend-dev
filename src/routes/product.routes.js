@@ -262,4 +262,39 @@ router.get('/:id', auth, productController.getProductById);
  */
 router.get('/public/:id', productController.getPublicProductById);
 
+/**
+ * @swagger
+ * /api/products/related/{productId}:
+ *   get:
+ *     summary: Get related products
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 4
+ *     responses:
+ *       200:
+ *         description: List of related products
+ *       404:
+ *         description: Product not found
+ */
+router.get('/related/:productId', async (req, res) => {
+    try {
+        const relatedProducts = await productService.getRelatedProducts(
+            req.params.productId,
+            parseInt(req.query.limit) || 4
+        );
+        res.json(relatedProducts);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

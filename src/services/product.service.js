@@ -288,6 +288,26 @@ class ProductService {
 
         return product;
     }
+
+    async getRelatedProducts(productId, limit = 4) {
+        const product = await MarketProduct.findById(productId);
+        if (!product) {
+            throw { status: 404, message: 'Product not found' };
+        }
+
+        // Find products in the same category, excluding the current product
+        const relatedProducts = await MarketProduct.find({
+            _id: { $ne: productId },
+            category: product.category,
+            status: 'active'
+        })
+        .populate('category', 'name')
+        .populate('sellerId', 'businessName')
+        .limit(limit)
+        .sort('-metadata.views');  // Sort by most viewed
+
+        return relatedProducts;
+    }
 }
 
 module.exports = new ProductService();
