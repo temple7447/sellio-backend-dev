@@ -110,22 +110,67 @@ class ProductService {
         }
     }
 
-    async getSellerProducts(sellerId) {
-        return await MarketProduct.find({ sellerId });
-    }
-
-    async getPublicProducts(query) {
-        const { page = 1, limit = 10, category } = query;
+    async getSellerProducts(sellerId, query = {}) {
+        const { page = 1, limit = 10, status, sort = '-createdAt' } = query;
         const skip = (page - 1) * limit;
 
-        const filter = { status: 'active' };
-        if (category) filter.category = category;
+        const filter = { sellerId };
+        if (status) filter.status = status;
 
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
+                .populate('category', 'name')
                 .skip(skip)
                 .limit(limit)
-                .populate('sellerId', 'businessName'),
+                .sort(sort),
+            MarketProduct.countDocuments(filter)
+        ]);
+
+        return {
+            products,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: page,
+                limit
+            }
+        };
+    }
+
+    async getPublicProducts(query) {
+        const { 
+            page = 1, 
+            limit = 10, 
+            category, 
+            search,
+            sort = '-createdAt',
+            minPrice,
+            maxPrice
+        } = query;
+        const skip = (page - 1) * limit;
+
+        // Build filter
+        const filter = { status: 'active' };
+        if (category) filter.category = category;
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
+        }
+        if (minPrice || maxPrice) {
+            filter['price.current'] = {};
+            if (minPrice) filter['price.current'].$gte = parseFloat(minPrice);
+            if (maxPrice) filter['price.current'].$lte = parseFloat(maxPrice);
+        }
+
+        const [products, total] = await Promise.all([
+            MarketProduct.find(filter)
+                .populate('category', 'name')
+                .populate('sellerId', 'businessName')
+                .skip(skip)
+                .limit(limit)
+                .sort(sort),
             MarketProduct.countDocuments(filter)
         ]);
 
@@ -141,19 +186,36 @@ class ProductService {
     }
 
     async getAdminProducts(query) {
-        const { status, page = 1, limit = 10 } = query;
+        const { 
+            status, 
+            page = 1, 
+            limit = 10,
+            sellerId,
+            category,
+            search,
+            sort = '-createdAt'
+        } = query;
         const skip = (page - 1) * limit;
 
+        // Build filter
         const filter = {};
         if (status) filter.status = status;
+        if (sellerId) filter.sellerId = sellerId;
+        if (category) filter.category = category;
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
+        }
 
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
                 .populate('sellerId', 'businessName email')
-                .populate('category')
+                .populate('category', 'name')
                 .skip(skip)
                 .limit(limit)
-                .sort({ createdAt: -1 }),
+                .sort(sort),
             MarketProduct.countDocuments(filter)
         ]);
 

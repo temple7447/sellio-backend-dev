@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { auth, isVerified, isSeller, isAdmin, isAdminVerified } = require('../middleware/auth');
 const productController = require('../controllers/product.controller');
+const productService = require('../services/product.service');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -87,9 +88,135 @@ const upload = multer({ storage: multer.memoryStorage() });
  *         description: Unauthorized
  */
 router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('images', 5), productController.createProduct);
+
+/**
+ * @swagger
+ * /api/products/seller/{sellerId}:
+ *   get:
+ *     summary: Get all products by seller ID
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, draft, inactive]
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of seller's products
+ */
+router.get('/seller/:sellerId', async (req, res) => {
+    try {
+        const result = await productService.getSellerProducts(req.params.sellerId, req.query);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/products/public:
+ *   get:
+ *     summary: Get public products with filters
+ *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of public products
+ */
 router.get('/public', productController.getPublicProducts);
-router.get('/my-products', auth, isSeller, productController.getSellerProducts);
+
+/**
+ * @swagger
+ * /api/products/admin/list:
+ *   get:
+ *     summary: Get all products (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: sellerId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of all products
+ *       403:
+ *         description: Admin access required
+ */
 router.get('/admin/list', auth, isAdmin, productController.getAdminProducts);
+router.get('/my-products', auth, isSeller, productController.getSellerProducts);
 router.patch('/:id', auth, isSeller, productController.updateProduct);
 router.delete('/:id', auth, isSeller, productController.deleteProduct);
 
