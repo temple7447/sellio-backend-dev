@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 
 const sendOTP = async (email, otp) => {
     try {
-        await transporter.sendMail({
+        const mailResponse = await transporter.sendMail({
             from: config.EMAIL_USER,
             to: email,
             subject: 'Verify Your Market Vendor Account',
@@ -22,10 +22,22 @@ const sendOTP = async (email, otp) => {
                 <p>This OTP will expire in 5 minutes.</p>
             `,
         });
-        return true;
+
+        console.log(chalk.green('✓ Email sent successfully'));
+        console.log(chalk.blue('Message ID:'), mailResponse.messageId);
+        
+        return {
+            success: true,
+            messageId: mailResponse.messageId,
+            message: 'OTP sent successfully'
+        };
     } catch (error) {
         console.error(chalk.red('✗ Email sending failed:'), error);
-        return false;
+        return {
+            success: false,
+            error: error.message,
+            message: 'Failed to send OTP email'
+        };
     }
 };
 

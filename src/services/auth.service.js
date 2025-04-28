@@ -2,19 +2,16 @@ const { MarketUser, MarketSeller } = require('../models/MarketUser');
 const MarketOTP = require('../models/MarketOTP');
 const { sendOTP } = require('../utils/email');
 const { uploadToCloudinary } = require('../utils/cloudinary');
-const otpGenerator = require('otp-generator');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
 class AuthService {
     // Helper method to generate 6-digit OTP
     generateOTP() {
-        return otpGenerator.generate(6, {
-            digits: true,
-            alphabets: false,
-            upperCase: false,
-            specialChars: false
-        });
+        // Generate a random 6-digit number
+        const min = 100000; // Minimum 6-digit number
+        const max = 999999; // Maximum 6-digit number
+        return Math.floor(Math.random() * (max - min + 1) + min).toString();
     }
 
     async registerSeller(data, file) {
@@ -66,18 +63,26 @@ class AuthService {
         const otp = this.generateOTP();
         await new MarketOTP({ email: data.email, otp, userType: 'seller' }).save();
         
-        // Send OTP email
-        const emailSent = await sendOTP(data.email, otp);
-        if (!emailSent) {
-            throw { status: 500, message: 'Failed to send OTP email' };
+        // Send OTP email with enhanced response handling
+        const emailResult = await sendOTP(data.email, otp);
+        if (!emailResult.success) {
+            throw { 
+                status: 500, 
+                message: 'Failed to send OTP email',
+                error: emailResult.error
+            };
         }
 
         await seller.save();
 
         return {
-            message: 'Registration successful. Please verify your email.',
+            message: 'Registration successful. Please check your email for OTP.',
             email: seller.email,
-            governmentId: cloudinaryResult.secure_url
+            governmentId: cloudinaryResult.secure_url,
+            emailSent: {
+                success: true,
+                messageId: emailResult.messageId
+            }
         };
     }
 
