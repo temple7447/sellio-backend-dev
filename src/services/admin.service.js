@@ -44,14 +44,34 @@ class AdminService {
         const [users, total] = await Promise.all([
             MarketUser.find(filter)
                 .select('-password')
+                .populate({
+                    path: 'role',
+                    select: 'businessName businessAddress governmentId adminVerified'
+                })
                 .skip(skip)
                 .limit(limit)
                 .sort({ createdAt: -1 }),
             MarketUser.countDocuments(filter)
         ]);
 
+        const formattedUsers = users.map(user => ({
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
+            role: user.role,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt,
+            ...(user.role === 'seller' && {
+                businessName: user.businessName,
+                businessAddress: user.businessAddress,
+                governmentId: user.governmentId,
+                adminVerified: user.adminVerified
+            })
+        }));
+
         return {
-            users,
+            users: formattedUsers,
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
