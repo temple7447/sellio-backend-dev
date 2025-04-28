@@ -139,6 +139,45 @@ class AuthService {
     async getProfile(userId) {
         return await MarketUser.findById(userId).select('-password');
     }
+
+    async resendOTP(email) {
+        const user = await MarketUser.findOne({ email });
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        if (user.isVerified) {
+            throw { status: 400, message: 'User is already verified' };
+        }
+
+        // Generate new OTP
+        const otp = this.generateOTP();
+        
+        // Delete any existing OTP for this email
+        await MarketOTP.deleteMany({ email });
+        
+        // Save new OTP
+        await new MarketOTP({ email, otp, userType: user.role }).save();
+        
+        // Send new OTP email
+        const emailResult = await sendOTP(email, otp);
+        if (!emailResult.success) {
+            throw { 
+                status: 500, 
+                message: 'Failed to send OTP email',
+                error: emailResult.error
+            };
+        }
+
+        return {
+            message: 'New OTP sent successfully',
+            email,
+            emailSent: {
+                success: true,
+                messageId: emailResult.messageId
+            }
+        };
+    }
 }
 
 module.exports = new AuthService();

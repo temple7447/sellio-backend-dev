@@ -44,6 +44,17 @@ class AuthController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    async resendOTP(req, res) {
+        try {
+            const result = await authService.resendOTP(req.body.email);
+            console.log(chalk.green('✓ New OTP sent successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ OTP resend failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();

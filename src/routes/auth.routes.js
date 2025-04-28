@@ -278,4 +278,31 @@ router.post('/register/admin', adminController.registerAdmin);
  */
 router.get('/admin/users', auth, isAdmin, adminController.getAllUsers);
 
+/**
+ * @swagger
+ * /api/auth/resend-otp:
+ *   post:
+ *     summary: Resend OTP for email verification
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: New OTP sent successfully
+ *       400:
+ *         description: User already verified
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Email sending failed
+ */
+router.post('/resend-otp', authController.resendOTP);
+
 module.exports = router;
