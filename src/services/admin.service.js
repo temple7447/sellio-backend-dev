@@ -60,6 +60,25 @@ class AdminService {
             }
         };
     }
+
+    async verifySeller(sellerId) {
+        const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
+        if (!seller) {
+            throw { status: 404, message: 'Seller not found' };
+        }
+
+        seller.adminVerified = true;
+        await seller.save();
+
+        return {
+            message: 'Seller verified successfully',
+            seller: {
+                email: seller.email,
+                businessName: seller.businessName,
+                adminVerified: seller.adminVerified
+            }
+        };
+    }
 }
 
 module.exports = new AdminService();

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { auth, isVerified, isSeller, isAdmin } = require('../middleware/auth');
+const { auth, isVerified, isSeller, isAdmin, isAdminVerified } = require('../middleware/auth');
 const productController = require('../controllers/product.controller');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -86,7 +86,7 @@ const upload = multer({ storage: multer.memoryStorage() });
  *       401:
  *         description: Unauthorized
  */
-router.post('/', auth, isSeller, isVerified, upload.array('images', 5), productController.createProduct);
+router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('images', 5), productController.createProduct);
 router.get('/public', productController.getPublicProducts);
 router.get('/my-products', auth, isSeller, productController.getSellerProducts);
 router.get('/admin/list', auth, isAdmin, productController.getAdminProducts);

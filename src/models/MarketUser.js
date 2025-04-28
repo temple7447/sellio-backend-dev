@@ -62,6 +62,10 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
     governmentId: {
         type: String,
         required: true
+    },
+    adminVerified: {
+        type: Boolean,
+        default: false
     }
 }));
 

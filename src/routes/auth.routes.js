@@ -305,4 +305,28 @@ router.get('/admin/users', auth, isAdmin, adminController.getAllUsers);
  */
 router.post('/resend-otp', authController.resendOTP);
 
+/**
+ * @swagger
+ * /api/auth/admin/verify-seller/{sellerId}:
+ *   patch:
+ *     summary: Verify a seller (Admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Seller verified successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Seller not found
+ */
+router.patch('/admin/verify-seller/:sellerId', auth, isAdmin, adminController.verifySeller);
+
 module.exports = router;

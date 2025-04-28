@@ -23,6 +23,17 @@ class AdminController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    async verifySeller(req, res) {
+        try {
+            const result = await adminService.verifySeller(req.params.sellerId);
+            console.log(chalk.green('✓ Seller verified successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Seller verification failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AdminController();
