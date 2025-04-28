@@ -125,14 +125,26 @@ class AuthService {
             { expiresIn: '24h' }
         );
 
-        return { 
-            token, 
+        // Format response based on user role
+        const userResponse = {
+            email: user.email,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
             role: user.role,
-            user: {
-                email: user.email,
-                fullName: user.fullName,
-                isVerified: user.isVerified
-            }
+            isVerified: user.isVerified,
+            ...(user.role === 'seller' ? {
+                businessName: user.businessName,
+                businessAddress: user.businessAddress,
+                adminVerified: user.adminVerified || false
+            } : {
+                adminVerified: true, // Admins are always verified
+                permissions: user.permissions || []
+            })
+        };
+
+        return { 
+            token,
+            user: userResponse
         };
     }
 
