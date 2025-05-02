@@ -63,6 +63,19 @@ class ProductController {
         }
     }
 
+    async getPublicSellerProducts(req, res) {
+        try {
+            const result = await productService.getPublicSellerProducts(
+                req.params.sellerId,
+                req.query
+            );
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Public seller products fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async updateProduct(req, res) {
         try {
             const product = await productService.updateProduct(req.params.id, req.user._id, req.body);
@@ -70,6 +83,21 @@ class ProductController {
             res.json(product);
         } catch (error) {
             console.error(chalk.red('✗ Product update failed:', error));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
+
+    async updateProductStatus(req, res) {
+        try {
+            const result = await productService.updateProductStatus(
+                req.params.id,
+                req.user._id,
+                req.body.status
+            );
+            console.log(chalk.blue(`✓ Product ${result.name} status updated to: ${result.status}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Product status update failed:', error));
             res.status(error.status || 400).json({ message: error.message });
         }
     }
@@ -82,6 +110,33 @@ class ProductController {
         } catch (error) {
             console.error(chalk.red('✗ Product deletion failed:', error));
             res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getOtherProductsBySeller(req, res) {
+        try {
+            const { productId, sellerId } = req.params;
+            const limit = parseInt(req.query.limit) || 4;
+            
+            const products = await productService.getOtherProductsBySeller(
+                productId,
+                sellerId,
+                limit
+            );
+            res.json(products);
+        } catch (error) {
+            console.error(chalk.red('✗ Seller products fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getSellerDashboardStats(req, res) {
+        try {
+            const stats = await productService.getSellerDashboardStats(req.user._id);
+            res.json(stats);
+        } catch (error) {
+            console.error(chalk.red('✗ Dashboard stats fetch failed:', error));
+            res.status(500).json({ message: error.message });
         }
     }
 }

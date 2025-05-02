@@ -91,16 +91,27 @@ router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('imag
 
 /**
  * @swagger
- * /api/products/seller/{sellerId}:
+ * /api/products/seller/stats:
  *   get:
- *     summary: Get all products by seller ID
+ *     summary: Get seller dashboard statistics
  *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Seller dashboard statistics
+ */
+router.get('/seller/stats', auth, isSeller, productController.getSellerDashboardStats);
+
+/**
+ * @swagger
+ * /api/products/seller/list:
+ *   get:
+ *     summary: Get all products for authenticated seller
+ *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
- *       - in: path
- *         name: sellerId
- *         required: true
- *         schema:
- *           type: string
  *       - in: query
  *         name: page
  *         schema:
@@ -122,7 +133,30 @@ router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('imag
  *       200:
  *         description: List of seller's products
  */
-router.get('/seller/:sellerId', async (req, res) => {
+router.get('/seller/list', auth, isSeller, async (req, res) => {
+    try {
+        const result = await productService.getSellerProducts(req.user._id, req.query);
+        res.json(result);
+    } catch (error) {
+        console.error(chalk.red('✗ Product fetch failed:', error));
+        res.status(500).json({ message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/products/seller/{sellerId}/products:
+ *   get:
+ *     summary: Get all products by seller ID (public)
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.get('/seller/:sellerId/products', async (req, res) => {
     try {
         const result = await productService.getSellerProducts(req.params.sellerId, req.query);
         res.json(result);
@@ -216,7 +250,66 @@ router.get('/public', productController.getPublicProducts);
  *         description: Admin access required
  */
 router.get('/admin/list', auth, isAdmin, productController.getAdminProducts);
+
+/**
+ * @swagger
+ * /api/products/my-products:
+ *   get:
+ *     summary: Get all products uploaded by the authenticated seller
+ *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, draft, inactive]
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           default: '-createdAt'
+ *     responses:
+ *       200:
+ *         description: List of seller's products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 products:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Product'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     pages:
+ *                       type: number
+ *                     currentPage:
+ *                       type: number
+ *                     limit:
+ *                       type: number
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not a seller account
+ */
 router.get('/my-products', auth, isSeller, productController.getSellerProducts);
+
 router.patch('/:id', auth, isSeller, productController.updateProduct);
 router.delete('/:id', auth, isSeller, productController.deleteProduct);
 
@@ -296,5 +389,126 @@ router.get('/related/:productId', async (req, res) => {
         res.status(error.status || 500).json({ message: error.message });
     }
 });
+
+/**
+ * @swagger
+ * /api/products/{productId}/seller/{sellerId}/others:
+ *   get:
+ *     summary: Get other products by the same seller
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the current product to exclude
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the seller
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 4
+ *         description: Maximum number of products to return
+ *     responses:
+ *       200:
+ *         description: List of other products by the seller
+ *       404:
+ *         description: Seller not found
+ */
+router.get('/:productId/seller/:sellerId/others', productController.getOtherProductsBySeller);
+
+/**
+ * @swagger
+ * /api/products/public/seller/{sellerId}/products:
+ *   get:
+ *     summary: Get public products by seller (no auth required)
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the seller
+ *       - in: query
+ *         name: excludeProduct
+ *         schema:
+ *           type: string
+ *         description: Optional product ID to exclude from results
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *         description: Maximum number of products to return
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *     responses:
+ *       200:
+ *         description: List of seller's public products with pagination
+ *       404:
+ *         description: Seller not found
+ */
+router.get('/public/seller/:sellerId/products', productController.getPublicSellerProducts);
+
+router.get('/seller/dashboard', auth, isSeller, productController.getSellerDashboardStats);
+router.get('/seller/products', auth, isSeller, productController.getSellerProducts);
+
+router.get('/seller/:sellerId/public', async (req, res) => {
+    try {
+        const result = await productService.getPublicSellerProducts(
+            req.params.sellerId,
+            req.query
+        );
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/products/{id}/status:
+ *   patch:
+ *     summary: Update product status (draft/active/inactive)
+ *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [draft, active, inactive]
+ *     responses:
+ *       200:
+ *         description: Product status updated
+ *       400:
+ *         description: Invalid status
+ *       404:
+ *         description: Product not found
+ */
+router.patch('/:id/status', auth, isSeller, productController.updateProductStatus);
 
 module.exports = router;

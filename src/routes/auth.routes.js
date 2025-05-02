@@ -218,6 +218,68 @@ router.patch('/profile/admin', auth, isAdmin, async (req, res) => {
 
 /**
  * @swagger
+ * /api/auth/profile/seller/update:
+ *   put:
+ *     summary: Update seller profile with optional image
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               businessName:
+ *                 type: string
+ *               businessAddress:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ */
+router.put('/profile/seller/update', 
+    auth, 
+    isSeller, 
+    upload.single('profileImage'), 
+    authController.updateSellerProfile
+);
+
+/**
+ * @swagger
+ * /api/auth/profile/admin/update:
+ *   put:
+ *     summary: Update admin profile with optional image
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ */
+router.put('/profile/admin/update',
+    auth,
+    isAdmin,
+    upload.single('profileImage'),
+    authController.updateAdminProfile
+);
+
+/**
+ * @swagger
  * /api/auth/register/admin:
  *   post:
  *     summary: One-time admin registration
@@ -328,5 +390,86 @@ router.post('/resend-otp', authController.resendOTP);
  *         description: Seller not found
  */
 router.patch('/admin/verify-seller/:sellerId', auth, isAdmin, adminController.verifySeller);
+
+/**
+ * @swagger
+ * /api/auth/seller/{sellerId}/public:
+ *   get:
+ *     summary: Get public seller/vendor profile
+ *     tags: [Sellers]
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Seller public profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 businessName:
+ *                   type: string
+ *                 businessAddress:
+ *                   type: string
+ *                 rating:
+ *                   type: object
+ *                   properties:
+ *                     average:
+ *                       type: number
+ *                     count:
+ *                       type: number
+ *                 totalProducts:
+ *                   type: number
+ *                 joinedDate:
+ *                   type: string
+ *                   format: date-time
+ *             example:
+ *               businessName: "Electronics Store"
+ *               businessAddress: "123 Market Street, Lagos"  
+ *               rating:
+ *                 average: 4.5
+ *                 count: 28
+ *               totalProducts: 156
+ *               joinedDate: "2023-01-15T08:00:00.000Z"
+ */
+router.get('/seller/:sellerId/public', authController.getPublicSellerProfile);
+
+/**
+ * @swagger
+ * /api/auth/register/customer:
+ *   post:
+ *     summary: Register a new customer
+ *     tags: [Auth]
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - fullName
+ *               - phoneNumber
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ */
+router.post('/register/customer', upload.single('profileImage'), authController.registerCustomer);
 
 module.exports = router;

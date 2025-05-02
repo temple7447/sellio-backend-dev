@@ -1,4 +1,5 @@
-const { MarketUser, MarketSeller } = require('../models/MarketUser');
+const { MarketUser, MarketSeller, MarketCustomer } = require('../models/MarketUser');
+const MarketProduct = require('../models/MarketProduct');
 const MarketOTP = require('../models/MarketOTP');
 const { sendOTP } = require('../utils/email');
 const { uploadToCloudinary } = require('../utils/cloudinary');
@@ -86,6 +87,85 @@ class AuthService {
         };
     }
 
+    async registerCustomer(data, file) {
+        // Validate required fields
+        const requiredFields = ['email', 'password', 'fullName', 'phoneNumber'];
+        for (const field of requiredFields) {
+            if (!data[field]) {
+                throw { 
+                    status: 400, 
+                    message: `Missing required field: ${field}` 
+                };
+            }
+        }
+
+        // Check for existing user
+        const existingUser = await MarketUser.findOne({ email: data.email });
+        if (existingUser) {
+            throw { status: 400, message: 'Email already registered' };
+        }
+
+        // Handle optional profile image upload
+        let profileImage = null;
+        if (file) {
+            try {
+                const result = await uploadToCloudinary(file, 'customer-profiles');
+                profileImage = result.secure_url;
+            } catch (error) {
+                throw { 
+                    status: 400, 
+                    message: 'File upload failed',
+                    error: error.message 
+                };
+            }
+        }
+
+        // Create new customer instance
+        const customer = new MarketCustomer({
+            email: data.email,
+            password: data.password,
+            fullName: data.fullName,
+            phoneNumber: data.phoneNumber,
+            role: 'customer',
+            profileImage,
+            shippingAddresses: [],
+            metadata: {
+                lastLogin: null,
+                totalOrders: 0
+            }
+        });
+
+        // Generate and save OTP
+        const otp = this.generateOTP();
+        await new MarketOTP({ 
+            email: data.email, 
+            otp, 
+            userType: 'customer' 
+        }).save();
+        
+        // Send OTP email
+        const emailResult = await sendOTP(data.email, otp);
+        if (!emailResult.success) {
+            throw { 
+                status: 500, 
+                message: 'Failed to send OTP email',
+                error: emailResult.error
+            };
+        }
+
+        await customer.save();
+
+        return {
+            message: 'Registration successful. Please verify your email.',
+            email: customer.email,
+            profileImage: profileImage,
+            emailSent: {
+                success: true,
+                messageId: emailResult.messageId
+            }
+        };
+    }
+
     async verifyOTP(data) {
         const { email, otp } = data;
         const otpRecord = await MarketOTP.findOne({ 
@@ -115,10 +195,7 @@ class AuthService {
             throw { status: 401, message: 'Invalid credentials' };
         }
 
-        if (user.role === 'customer') {
-            throw { status: 403, message: 'Customer login not allowed' };
-        }
-
+        // Generate token
         const token = jwt.sign(
             { id: user._id, role: user.role }, 
             config.JWT_SECRET, 
@@ -136,16 +213,23 @@ class AuthService {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
                 adminVerified: user.adminVerified || false
+            } : user.role === 'customer' ? {
+                shippingAddresses: user.shippingAddresses || []
             } : {
-                adminVerified: true, // Admins are always verified
                 permissions: user.permissions || []
             })
         };
 
-        return { 
-            token,
-            user: userResponse
-        };
+        // Update last login for customers
+        if (user.role === 'customer') {
+            user.metadata = {
+                ...user.metadata,
+                lastLogin: new Date()
+            };
+            await user.save();
+        }
+
+        return { token, user: userResponse };
     }
 
     async getProfile(userId) {
@@ -187,6 +271,136 @@ class AuthService {
             emailSent: {
                 success: true,
                 messageId: emailResult.messageId
+            }
+        };
+    }
+
+    async getPublicSellerProfile(sellerId) {
+        const seller = await MarketUser.findOne({ 
+            _id: sellerId, 
+            role: 'seller',
+            isVerified: true,
+            adminVerified: true
+        });
+
+        if (!seller) {
+            throw { status: 404, message: 'Seller not found' };
+        }
+
+        // Get seller's products count
+        const totalProducts = await MarketProduct.countDocuments({
+            sellerId: seller._id,
+            status: 'active'
+        });
+
+        // Calculate average rating from products
+        const ratingStats = await MarketProduct.aggregate([
+            { $match: { sellerId: seller._id, status: 'active' } },
+            { 
+                $group: {
+                    _id: null,
+                    averageRating: { $avg: '$metadata.rating.average' },
+                    totalRatings: { $sum: '$metadata.rating.count' }
+                }
+            }
+        ]);
+
+        return {
+            businessName: seller.businessName,
+            businessAddress: seller.businessAddress,
+            rating: {
+                average: ratingStats[0]?.averageRating || 0,
+                count: ratingStats[0]?.totalRatings || 0
+            },
+            totalProducts,
+            joinedDate: seller.createdAt
+        };
+    }
+
+    async updateSellerProfile(sellerId, updates, imageFile) {
+        const seller = await MarketUser.findOne({ 
+            _id: sellerId, 
+            role: 'seller' 
+        });
+
+        if (!seller) {
+            throw { status: 404, message: 'Seller not found' };
+        }
+
+        // Validate allowed updates
+        const allowedUpdates = ['fullName', 'businessName', 'businessAddress', 'phoneNumber'];
+        const updateKeys = Object.keys(updates);
+        
+        const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
+        if (!isValidOperation) {
+            throw { 
+                status: 400, 
+                message: 'Invalid updates',
+                allowedUpdates 
+            };
+        }
+
+        // Handle profile image upload
+        if (imageFile) {
+            const result = await uploadToCloudinary(imageFile, 'profile-images');
+            updates.profileImage = result.secure_url;
+        }
+
+        // Apply updates
+        Object.assign(seller, updates);
+        await seller.save();
+
+        return {
+            message: 'Profile updated successfully',
+            profile: {
+                fullName: seller.fullName,
+                businessName: seller.businessName,
+                businessAddress: seller.businessAddress,
+                phoneNumber: seller.phoneNumber,
+                profileImage: seller.profileImage
+            }
+        };
+    }
+
+    async updateAdminProfile(adminId, updates, imageFile) {
+        const admin = await MarketUser.findOne({ 
+            _id: adminId, 
+            role: 'admin' 
+        });
+
+        if (!admin) {
+            throw { status: 404, message: 'Admin not found' };
+        }
+
+        // Validate allowed updates
+        const allowedUpdates = ['fullName', 'phoneNumber'];
+        const updateKeys = Object.keys(updates);
+        
+        const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
+        if (!isValidOperation) {
+            throw { 
+                status: 400, 
+                message: 'Invalid updates',
+                allowedUpdates 
+            };
+        }
+
+        // Handle profile image upload
+        if (imageFile) {
+            const result = await uploadToCloudinary(imageFile, 'profile-images');
+            updates.profileImage = result.secure_url;
+        }
+
+        // Apply updates
+        Object.assign(admin, updates);
+        await admin.save();
+
+        return {
+            message: 'Profile updated successfully',
+            profile: {
+                fullName: admin.fullName,
+                phoneNumber: admin.phoneNumber,
+                profileImage: admin.profileImage
             }
         };
     }

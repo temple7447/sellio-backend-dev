@@ -13,6 +13,17 @@ class AuthController {
         }
     }
 
+    async registerCustomer(req, res) {
+        try {
+            const result = await authService.registerCustomer(req.body, req.file);
+            console.log(chalk.green('✓ Customer registered successfully:', result.email));
+            res.status(201).json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Customer registration failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async verifyOTP(req, res) {
         try {
             const result = await authService.verifyOTP(req.body);
@@ -27,7 +38,7 @@ class AuthController {
     async login(req, res) {
         try {
             const result = await authService.login(req.body);
-            console.log(chalk.green(`✓ ${result.role} logged in successfully`));
+            console.log(chalk.green(`✓ ${result.user.role} logged in successfully`));
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Login failed:', error));
@@ -53,6 +64,46 @@ class AuthController {
         } catch (error) {
             console.error(chalk.red('✗ OTP resend failed:', error.message));
             res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getPublicSellerProfile(req, res) {
+        try {
+            const profile = await authService.getPublicSellerProfile(req.params.sellerId);
+            res.json(profile);
+        } catch (error) {
+            console.error(chalk.red('✗ Public seller profile fetch failed:', error));
+            res.status(error.status || 404).json({ message: error.message });
+        }
+    }
+
+    async updateSellerProfile(req, res) {
+        try {
+            const result = await authService.updateSellerProfile(
+                req.user._id,
+                req.body,
+                req.file
+            );
+            console.log(chalk.green('✓ Seller profile updated successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Profile update failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
+
+    async updateAdminProfile(req, res) {
+        try {
+            const result = await authService.updateAdminProfile(
+                req.user._id,
+                req.body,
+                req.file
+            );
+            console.log(chalk.green('✓ Admin profile updated successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Profile update failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
         }
     }
 }

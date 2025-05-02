@@ -8,9 +8,11 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/product.routes');
+const orderRoutes = require('./routes/order.routes');
 const securityMiddleware = require('./middleware/security');
 const requestLogger = require('./middleware/logger');
 const multer = require('multer');
+const categoryRoutes = require('./routes/category.routes');
 
 // Configure multer for memory storage
 const upload = multer({
@@ -48,6 +50,8 @@ mongoose.connect(config.MONGODB_URI)
 
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/categories', categoryRoutes);
 
 app.listen(config.PORT, () => {
     console.log(chalk.blue(`✓ Server is running on port ${config.PORT}`));

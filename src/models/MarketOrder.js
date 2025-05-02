@@ -6,6 +6,7 @@ const orderSchema = new mongoose.Schema({
         ref: 'MarketUser',
         required: true
     },
+   
     items: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -68,5 +69,8 @@ const orderSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+// Add index for better query performance
+orderSchema.index({ guestEmail: 1 });
 
 module.exports = mongoose.model('MarketOrder', orderSchema);

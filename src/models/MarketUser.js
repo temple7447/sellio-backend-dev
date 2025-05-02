@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
     role: {
         type: String,
         required: true,
-        enum: ['seller', 'admin']  // Removed 'customer'
+        enum: ['seller', 'admin', 'customer']  // Add customer role
     },
     isVerified: {
         type: Boolean,
@@ -81,4 +81,25 @@ const MarketAdmin = MarketUser.discriminator('admin', new mongoose.Schema({
     }
 }));
 
-module.exports = { MarketUser, MarketSeller, MarketAdmin };
+// Add Customer specific schema
+const MarketCustomer = MarketUser.discriminator('customer', new mongoose.Schema({
+    shippingAddresses: [{
+        fullName: String,
+        phoneNumber: String,
+        street: String,
+        city: String,
+        state: String,
+        country: String,
+        zipCode: String,
+        isDefault: Boolean
+    }],
+    metadata: {
+        lastLogin: Date,
+        totalOrders: {
+            type: Number,
+            default: 0
+        }
+    }
+}));
+
+module.exports = { MarketUser, MarketSeller, MarketAdmin, MarketCustomer };

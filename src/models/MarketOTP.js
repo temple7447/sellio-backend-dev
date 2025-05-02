@@ -11,7 +11,7 @@ const marketOTPSchema = new mongoose.Schema({
     },
     userType: {
         type: String,
-        enum: ['seller', 'admin'],
+        enum: ['seller', 'admin', 'customer'],  // Add 'customer' to valid types
         required: true
     },
     createdAt: {
