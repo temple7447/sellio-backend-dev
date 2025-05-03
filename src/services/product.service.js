@@ -259,6 +259,52 @@ class ProductService {
         };
     }
 
+    async getActiveAdminProducts(query) {
+        const { 
+            page = 1, 
+            limit = 10,
+            sort = '-createdAt'
+        } = query;
+        const skip = (page - 1) * limit;
+
+        // Build filter for active products only
+        const filter = { status: 'active' };
+
+        const [products, total] = await Promise.all([
+            MarketProduct.find(filter)
+                .populate('sellerId', 'businessName email')
+                .populate('category', 'name')
+                .skip(skip)
+                .limit(limit)
+                .sort(sort),
+            MarketProduct.countDocuments(filter)
+        ]);
+
+        // Format response
+        const formattedProducts = products.map(product => ({
+            id: product._id,
+            name: product.name,
+            price: product.price,
+            category: product.category,
+            seller: product.sellerId,
+            inventory: product.inventory,
+            images: product.images,
+            status: product.status,
+            metadata: product.metadata,
+            createdAt: product.createdAt
+        }));
+
+        return {
+            products: formattedProducts,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+    }
+
     async updateProduct(productId, sellerId, updates) {
         const product = await MarketProduct.findOne({ _id: productId, sellerId });
         
@@ -531,6 +577,32 @@ class ProductService {
             }
         ]);
 
+        // Get unique customer count
+        const uniqueCustomers = await MarketOrder.aggregate([
+            {
+                $match: {
+                    'items.sellerId': new mongoose.Types.ObjectId(sellerId),
+                    'status': { $in: ['confirmed', 'processing', 'shipped', 'delivered'] }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        $cond: [
+                            { $ifNull: ['$customerId', false] },
+                            '$customerId',
+                            '$guestEmail'
+                        ]
+                    }
+                }
+            },
+            {
+                $count: 'total'
+            }
+        ]);
+
+        const totalCustomers = uniqueCustomers[0]?.total || 0;
+
         // Calculate growth percentages
         const totalProducts = await MarketProduct.countDocuments({ sellerId });
         const totalOrders = await MarketOrder.countDocuments({ 'items.sellerId': sellerId });
@@ -548,6 +620,7 @@ class ProductService {
             totalSales: currentSalesTotal,
             totalOrders,
             totalProducts,
+            totalCustomers,  // Add this new field
             salesGrowth,
             productGrowth,
             orderGrowth,

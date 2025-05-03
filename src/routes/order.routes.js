@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');  // Add this import
+const { auth, isSeller, isAdmin } = require('../middleware/auth');  // Fix the import path
 const orderController = require('../controllers/order.controller');
 
 /**
@@ -323,5 +323,221 @@ router.get('/customer/:orderId/status', auth, orderController.getOrderStatus);
  *         description: Payment initialization successful
  */
 router.post('/customer/:orderId/pay', auth, orderController.initializeCustomerPayment);
+
+/**
+ * @swagger
+ * /api/orders/seller/orders:
+ *   get:
+ *     summary: Get orders for seller's products
+ *     tags: [Orders]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, processing, shipped, delivered, cancelled]
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           default: '-createdAt'
+ *     responses:
+ *       200:
+ *         description: List of orders containing seller's products
+ *         content:
+ *           application/json:
+ *             example:
+ *               orders:
+ *                 - orderId: "65a123abc..."
+ *                   customerDetails:
+ *                     email: "customer@example.com"
+ *                     fullName: "John Doe"
+ *                   items:
+ *                     - product:
+ *                         id: "65a123def..."
+ *                         name: "Product Name"
+ *                         image: "https://example.com/image.jpg"
+ *                       quantity: 2
+ *                       price: 99.99
+ *                       total: 199.98
+ *                   status: "pending"
+ *                   payment:
+ *                     status: "pending"
+ *                     method: "paystack"
+ *                   orderDate: "2024-01-20T10:00:00.000Z"
+ *               pagination:
+ *                 total: 50
+ *                 pages: 5
+ *                 currentPage: 1
+ *                 limit: 10
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Not a seller account
+ */
+router.get('/seller/orders', auth, isSeller, orderController.getSellerOrders);
+
+/**
+ * @swagger
+ * /api/orders/admin/orders:
+ *   get:
+ *     summary: Get all orders (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, processing, shipped, delivered, cancelled]
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           default: '-createdAt'
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by order ID or customer email
+ *     responses:
+ *       200:
+ *         description: List of all orders with pagination
+ *         content:
+ *           application/json:
+ *             example:
+ *               orders:
+ *                 - orderId: "65a123abc..."
+ *                   customerType: "registered"
+ *                   customer:
+ *                     id: "65b234def..."
+ *                     email: "customer@example.com" 
+ *                     fullName: "John Doe"
+ *                   items:
+ *                     - product:
+ *                         id: "65c345ghi..."
+ *                         name: "iPhone 14 Pro"
+ *                         image: "https://example.com/iphone.jpg"
+ *                       seller:
+ *                         id: "65d456jkl..."
+ *                         name: "Apple Store"
+ *                       quantity: 1
+ *                       price: 999.99
+ *                       total: 999.99
+ *                   status: "pending"
+ *                   payment:
+ *                     status: "pending"
+ *                     method: "paystack"
+ *                     transactionId: null
+ *                   shipping:
+ *                     address:
+ *                       street: "123 Main St"
+ *                       city: "New York"
+ *                       state: "NY"
+ *                       country: "USA"
+ *                       zipCode: "10001"
+ *                     cost: 10.00
+ *                     tracking: null
+ *                   totals:
+ *                     subtotal: 999.99
+ *                     tax: 50.00
+ *                     shipping: 10.00
+ *                     final: 1059.99
+ *                   createdAt: "2024-01-20T10:00:00.000Z"
+ *                   updatedAt: "2024-01-20T10:00:00.000Z"
+ *               pagination:
+ *                 total: 50
+ *                 pages: 5
+ *                 currentPage: 1
+ *                 limit: 10
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/admin/orders', auth, isAdmin, orderController.getAllOrders);
+
+/**
+ * @swagger
+ * /api/orders/admin/dashboard:
+ *   get:
+ *     summary: Get admin dashboard statistics
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: timeframe
+ *         schema:
+ *           type: string
+ *           enum: [today, week, month, year]
+ *           default: month
+ *     responses:
+ *       200:
+ *         description: Admin dashboard statistics
+ *         content:
+ *           application/json:
+ *             example:
+ *               overview:
+ *                 totalOrders: 1250
+ *                 totalRevenue: 125999.99
+ *                 avgOrderValue: 100.80
+ *                 pendingOrders: 45
+ *               recentOrders:
+ *                 - orderId: "65a123abc..."
+ *                   customerType: "registered"
+ *                   amount: 1059.99
+ *                   status: "pending"
+ *                   createdAt: "2024-01-20T10:00:00.000Z"
+ *               orderStats:
+ *                 pending: 45
+ *                 confirmed: 150
+ *                 processing: 80
+ *                 shipped: 120
+ *                 delivered: 800
+ *                 cancelled: 55
+ *               salesChart:
+ *                 - date: "Jan 2024"
+ *                   orders: 450
+ *                   revenue: 45999.99
+ *               topProducts:
+ *                 - productId: "65c345ghi..."
+ *                   name: "iPhone 14 Pro"
+ *                   totalOrders: 120
+ *                   revenue: 119998.80
+ *               topCustomers:
+ *                 - customerId: "65b234def..."
+ *                   name: "John Doe"
+ *                   totalOrders: 25
+ *                   totalSpent: 24999.75
+ *       401:
+ *         description: Not authenticated
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/admin/dashboard', auth, isAdmin, orderController.getAdminDashboard);
 
 module.exports = router;

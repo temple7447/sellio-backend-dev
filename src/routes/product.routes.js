@@ -253,6 +253,35 @@ router.get('/admin/list', auth, isAdmin, productController.getAdminProducts);
 
 /**
  * @swagger
+ * /api/products/admin/active:
+ *   get:
+ *     summary: Get active products (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of active products
+ *       403:
+ *         description: Admin access required
+ */
+router.get('/admin/active', auth, isAdmin, productController.getActiveAdminProducts);
+
+/**
+ * @swagger
  * /api/products/my-products:
  *   get:
  *     summary: Get all products uploaded by the authenticated seller

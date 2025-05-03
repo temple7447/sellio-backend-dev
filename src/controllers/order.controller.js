@@ -111,6 +111,31 @@ class OrderController {
             });
         }
     }
+
+    async getSellerOrders(req, res) {
+        try {
+            const result = await orderService.getSellerOrders(req.user._id, req.query);
+            console.log(chalk.green('✓ Seller orders fetched successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Seller orders fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getAdminDashboard(req, res) {
+        try {
+            const stats = await orderService.getAdminDashboardStats(req.query.timeframe);
+            console.log(chalk.green('✓ Admin dashboard statistics fetched successfully'));
+            res.json(stats);
+        } catch (error) {
+            console.error(chalk.red('✗ Dashboard statistics fetch failed:', error));
+            res.status(error.status || 500).json({
+                message: error.message,
+                details: error.details
+            });
+        }
+    }
 }
 
 module.exports = new OrderController();

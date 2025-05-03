@@ -43,6 +43,16 @@ class ProductController {
         }
     }
 
+    async getActiveAdminProducts(req, res) {
+        try {
+            const result = await productService.getActiveAdminProducts(req.query);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Active products fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async getProductById(req, res) {
         try {
             const product = await productService.getProductById(req.params.id);

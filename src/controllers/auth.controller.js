@@ -106,6 +106,21 @@ class AuthController {
             res.status(error.status || 400).json({ message: error.message });
         }
     }
+
+    async updateCustomerProfile(req, res) {
+        try {
+            const result = await authService.updateCustomerProfile(
+                req.user._id,
+                req.body,
+                req.file
+            );
+            console.log(chalk.green('✓ Customer profile updated successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Profile update failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();

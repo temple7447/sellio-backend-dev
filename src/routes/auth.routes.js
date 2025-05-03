@@ -280,6 +280,34 @@ router.put('/profile/admin/update',
 
 /**
  * @swagger
+ * /api/auth/profile/customer/update:
+ *   put:
+ *     summary: Update customer profile
+ *     tags: [Profile]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ */
+router.put('/profile/customer/update',
+    auth,
+    upload.single('profileImage'),
+    authController.updateCustomerProfile
+);
+
+/**
+ * @swagger
  * /api/auth/register/admin:
  *   post:
  *     summary: One-time admin registration

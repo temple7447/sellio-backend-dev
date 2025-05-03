@@ -404,6 +404,50 @@ class AuthService {
             }
         };
     }
+
+    async updateCustomerProfile(customerId, updates, imageFile) {
+        const customer = await MarketUser.findOne({ 
+            _id: customerId, 
+            role: 'customer' 
+        });
+
+        if (!customer) {
+            throw { status: 404, message: 'Customer not found' };
+        }
+
+        // Validate allowed updates
+        const allowedUpdates = ['fullName', 'phoneNumber'];
+        const updateKeys = Object.keys(updates);
+        
+        const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
+        if (!isValidOperation) {
+            throw { 
+                status: 400, 
+                message: 'Invalid updates',
+                allowedUpdates 
+            };
+        }
+
+        // Handle profile image upload if provided
+        if (imageFile) {
+            const result = await uploadToCloudinary(imageFile, 'profile-images');
+            updates.profileImage = result.secure_url;
+        }
+
+        // Apply updates
+        Object.assign(customer, updates);
+        await customer.save();
+
+        return {
+            message: 'Profile updated successfully',
+            profile: {
+                fullName: customer.fullName,
+                phoneNumber: customer.phoneNumber,
+                profileImage: customer.profileImage,
+                email: customer.email // Include email in response
+            }
+        };
+    }
 }
 
 module.exports = new AuthService();
