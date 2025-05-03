@@ -744,6 +744,122 @@ class OrderService {
             };
         }
     }
+
+    async getAllOrders(query = {}) {
+        try {
+            const { 
+                page = 1, 
+                limit = 10, 
+                status, 
+                sort = '-createdAt',
+                search 
+            } = query;
+            
+            const skip = (page - 1) * limit;
+
+            // Build filter object
+            const filter = {};
+            
+            if (status) {
+                filter.status = status;
+            }
+
+            // Add search functionality
+            if (search) {
+                filter.$or = [
+                    // Search by order ID
+                    { _id: { $regex: search, $options: 'i' } },
+                    // Search by customer email (both registered and guest)
+                    { 'guestEmail': { $regex: search, $options: 'i' } },
+                ];
+
+                // Also search in registered customer emails
+                const customers = await MarketUser.find({
+                    email: { $regex: search, $options: 'i' }
+                }).select('_id');
+
+                if (customers.length > 0) {
+                    filter.$or.push({ 
+                        customerId: { $in: customers.map(c => c._id) } 
+                    });
+                }
+            }
+
+            // Execute queries
+            const [orders, total] = await Promise.all([
+                MarketOrder.find(filter)
+                    .populate('customerId', 'email fullName')
+                    .populate({
+                        path: 'items.productId',
+                        select: 'name images price'
+                    })
+                    .populate('items.sellerId', 'businessName')
+                    .sort(sort)
+                    .skip(skip)
+                    .limit(limit),
+                MarketOrder.countDocuments(filter)
+            ]);
+
+            // Format response
+            const formattedOrders = orders.map(order => ({
+                orderId: order._id,
+                customerType: order.customerId ? 'registered' : 'guest',
+                customer: order.customerId ? {
+                    id: order.customerId._id,
+                    email: order.customerId.email,
+                    fullName: order.customerId.fullName
+                } : {
+                    email: order.guestEmail,
+                    fullName: order.shipping?.address?.fullName
+                },
+                items: order.items.map(item => ({
+                    product: {
+                        id: item.productId._id,
+                        name: item.productId.name,
+                        image: item.productId.images?.[0]?.url
+                    },
+                    seller: {
+                        id: item.sellerId._id,
+                        name: item.sellerId.businessName
+                    },
+                    quantity: item.quantity,
+                    price: item.price,
+                    total: item.price * item.quantity
+                })),
+                status: order.status,
+                payment: {
+                    status: order.payment.status,
+                    method: order.payment.method,
+                    transactionId: order.payment.transactionId
+                },
+                shipping: {
+                    address: order.shipping.address,
+                    cost: order.shipping.cost,
+                    tracking: order.shipping.tracking
+                },
+                totals: order.totals,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt
+            }));
+
+            return {
+                orders: formattedOrders,
+                pagination: {
+                    total,
+                    pages: Math.ceil(total / limit),
+                    currentPage: parseInt(page),
+                    limit: parseInt(limit)
+                }
+            };
+
+        } catch (error) {
+            throw {
+                status: 500,
+                message: 'Failed to fetch orders',
+                error: error.message
+            };
+        }
+    }
 }
 
 module.exports = new OrderService();
