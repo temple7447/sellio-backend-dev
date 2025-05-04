@@ -119,11 +119,13 @@ class ProductController {
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Product deletion failed:', error));
-            res.status(error.status || 500).json({
+            const statusCode = error.status || 500;
+            const errorResponse = {
                 success: false,
                 message: error.message || 'Failed to delete product',
-                error: error.error || error.stack
-            });
+                error: error.details || error.message
+            };
+            res.status(statusCode).json(errorResponse);
         }
     }
 

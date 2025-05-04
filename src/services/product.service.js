@@ -375,69 +375,51 @@ class ProductService {
 
     async deleteProduct(productId, sellerId) {
         try {
-            // Validate IDs
+            // Validate product ID
             if (!mongoose.Types.ObjectId.isValid(productId)) {
-                throw { 
-                    status: 400, 
-                    message: 'Invalid product ID format' 
+                throw {
+                    status: 400,
+                    message: 'Invalid product ID format',
+                    details: 'The provided product ID is not valid'
                 };
             }
 
-            if (!mongoose.Types.ObjectId.isValid(sellerId)) {
-                throw { 
-                    status: 400, 
-                    message: 'Invalid seller ID format' 
-                };
-            }
-
-            // Find product and check ownership
+            // Find and validate product
             const product = await MarketProduct.findOne({ 
                 _id: productId,
                 sellerId,
-                status: { $ne: 'deleted' } // Check if not already deleted
+                status: { $ne: 'deleted' }
             });
-            
+
             if (!product) {
-                throw { 
-                    status: 404, 
-                    message: 'Product not found or already deleted' 
-                };
-            }
-
-            // Check if product has any active orders
-            const hasActiveOrders = await MarketOrder.findOne({
-                'items.productId': productId,
-                status: { $in: ['pending', 'processing', 'shipped'] }
-            });
-
-            if (hasActiveOrders) {
                 throw {
-                    status: 400,
-                    message: 'Cannot delete product with active orders'
+                    status: 404,
+                    message: 'Product not found',
+                    details: 'The product may have been deleted or does not belong to you'
                 };
             }
 
-            // Soft delete by updating status
+            // Perform soft delete
             product.status = 'deleted';
             await product.save();
 
-            // Return success response
             return {
                 success: true,
                 message: 'Product deleted successfully',
                 data: {
                     id: product._id,
                     name: product.name,
-                    status: 'deleted',
                     deletedAt: new Date()
                 }
             };
         } catch (error) {
-            // Ensure consistent error format
+            if (error.status) {
+                throw error;
+            }
             throw {
-                status: error.status || 500,
-                message: error.message || 'Failed to delete product',
-                error: error.stack
+                status: 500,
+                message: 'Internal server error',
+                details: error.message
             };
         }
     }
