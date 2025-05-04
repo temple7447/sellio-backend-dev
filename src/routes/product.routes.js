@@ -91,6 +91,85 @@ router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('imag
 
 /**
  * @swagger
+ * /api/products/public:
+ *   get:
+ *     summary: Get public products with filters
+ *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of public products
+ */
+router.get('/public', productController.getPublicProducts);
+
+/**
+ * @swagger
+ * /api/products/trending:
+ *   get:
+ *     summary: Get trending products (public)
+ *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 4 
+ *         description: Number of products to return
+ *     responses:
+ *       200:
+ *         description: List of trending products with badges and stats
+ */
+router.get('/trending', productController.getTrendingProducts);
+
+/**
+ * @swagger
+ * /api/products/popular:
+ *   get:
+ *     summary: Get popular products (public)
+ *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 4
+ *         description: Number of products to return
+ *     responses:
+ *       200:
+ *         description: List of popular products
+ */
+router.get('/popular', productController.getPopularProducts);
+
+/**
+ * @swagger
  * /api/products/seller/stats:
  *   get:
  *     summary: Get seller dashboard statistics
@@ -164,47 +243,6 @@ router.get('/seller/:sellerId/products', async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 });
-
-/**
- * @swagger
- * /api/products/public:
- *   get:
- *     summary: Get public products with filters
- *     tags: [Products]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *       - in: query
- *         name: category
- *         schema:
- *           type: string
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *       - in: query
- *         name: minPrice
- *         schema:
- *           type: number
- *       - in: query
- *         name: maxPrice
- *         schema:
- *           type: number
- *       - in: query
- *         name: sort
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: List of public products
- */
-router.get('/public', productController.getPublicProducts);
 
 /**
  * @swagger
@@ -340,6 +378,38 @@ router.get('/admin/active', auth, isAdmin, productController.getActiveAdminProdu
 router.get('/my-products', auth, isSeller, productController.getSellerProducts);
 
 router.patch('/:id', auth, isSeller, productController.updateProduct);
+
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   delete:
+ *     summary: Delete a product (seller only)
+ *     tags: [Products]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Product ID to delete
+ *     responses:
+ *       200:
+ *         description: Product deleted successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Product deleted successfully
+ *               data:
+ *                 id: "65a123abc..."
+ *                 name: "Product name"
+ *       403:
+ *         description: Not authorized to delete this product
+ *       404:
+ *         description: Product not found
+ */
 router.delete('/:id', auth, isSeller, productController.deleteProduct);
 
 /**

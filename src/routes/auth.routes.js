@@ -468,6 +468,50 @@ router.get('/seller/:sellerId/public', authController.getPublicSellerProfile);
 
 /**
  * @swagger
+ * /api/auth/sellers/top:
+ *   get:
+ *     summary: Get list of top vendors/sellers
+ *     tags: [Sellers]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 6
+ *         description: Number of sellers to return
+ *     responses:
+ *       200:
+ *         description: List of top sellers
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 sellers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       businessName:
+ *                         type: string
+ *                       rating:
+ *                         type: object
+ *                         properties:
+ *                           average:
+ *                             type: number
+ *                           count:
+ *                             type: number
+ *                       totalProducts:
+ *                         type: integer
+ *                       logo:
+ *                         type: string
+ *                       slug:
+ *                         type: string
+ */
+router.get('/sellers/top', authController.getTopSellers);
+
+/**
+ * @swagger
  * /api/auth/register/customer:
  *   post:
  *     summary: Register a new customer

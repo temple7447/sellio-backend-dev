@@ -77,6 +77,16 @@ class AuthController {
         }
     }
 
+    async getTopSellers(req, res) {
+        try {
+            const sellers = await authService.getTopSellers(req.query.limit);
+            res.json({ sellers });
+        } catch (error) {
+            console.error(chalk.red('✗ Top sellers fetch failed:', error));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async updateSellerProfile(req, res) {
         try {
             const result = await authService.updateSellerProfile(

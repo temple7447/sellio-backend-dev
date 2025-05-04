@@ -183,8 +183,55 @@ class AuthService {
         await user.save();
         await MarketOTP.deleteOne({ _id: otpRecord._id });
 
-        const token = jwt.sign({ id: user._id, role: user.role }, config.JWT_SECRET, { expiresIn: '24h' });
-        return { token, message: 'Email verified successfully' };
+        // Generate JWT token
+        const token = jwt.sign(
+            { id: user._id, role: user.role }, 
+            config.JWT_SECRET, 
+            { expiresIn: '24h' }
+        );
+
+        // Format user response based on role
+        const userResponse = {
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
+            role: user.role,
+            isVerified: true,
+            profileImage: user.profileImage || null,
+            ...(user.role === 'seller' ? {
+                businessName: user.businessName,
+                businessAddress: user.businessAddress,
+                adminVerified: user.adminVerified || false,
+                governmentId: user.governmentId
+            } : user.role === 'customer' ? {
+                shippingAddresses: user.shippingAddresses || [],
+                metadata: {
+                    lastLogin: new Date(),
+                    totalOrders: user.metadata?.totalOrders || 0
+                }
+            } : {
+                permissions: user.permissions || []
+            })
+        };
+
+        // Update last login for customers
+        if (user.role === 'customer') {
+            user.metadata = {
+                ...user.metadata,
+                lastLogin: new Date()
+            };
+            await user.save();
+        }
+
+        return {
+            success: true,
+            message: 'Email verified and logged in successfully',
+            data: {
+                token,
+                user: userResponse
+            }
+        };
     }
 
     async login(credentials) {
@@ -447,6 +494,73 @@ class AuthService {
                 email: customer.email // Include email in response
             }
         };
+    }
+
+    async getTopSellers(limit = 6) {
+        try {
+            // Find verified and active sellers
+            const sellers = await MarketUser.find({
+                role: 'seller',
+                isVerified: true,
+                adminVerified: true
+            }).limit(parseInt(limit));
+
+            // Get product and rating stats for each seller
+            const sellerStats = await Promise.all(sellers.map(async (seller) => {
+                // Get total products count
+                const totalProducts = await MarketProduct.countDocuments({
+                    sellerId: seller._id,
+                    status: 'active'
+                });
+
+                // Calculate average rating from products
+                const ratingStats = await MarketProduct.aggregate([
+                    { 
+                        $match: { 
+                            sellerId: seller._id,
+                            status: 'active'
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            averageRating: { $avg: '$metadata.rating.average' },
+                            totalRatings: { $sum: '$metadata.rating.count' }
+                        }
+                    }
+                ]);
+
+                return {
+                    id: seller._id,
+                    businessName: seller.businessName,
+                    businessAddress: seller.businessAddress,
+                    rating: {
+                        average: parseFloat((ratingStats[0]?.averageRating || 0).toFixed(1)),
+                        count: ratingStats[0]?.totalRatings || 0
+                    },
+                    totalProducts,
+                    logo: seller.profileImage || null,
+                    slug: seller.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                };
+            }));
+
+            // Sort by rating and number of products
+            return sellerStats.sort((a, b) => {
+                // First sort by rating
+                if (b.rating.average !== a.rating.average) {
+                    return b.rating.average - a.rating.average;
+                }
+                // Then by number of products if ratings are equal
+                return b.totalProducts - a.totalProducts;
+            });
+
+        } catch (error) {
+            throw {
+                status: 500,
+                message: 'Failed to fetch top sellers',
+                error: error.message
+            };
+        }
     }
 }
 

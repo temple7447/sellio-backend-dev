@@ -172,15 +172,71 @@ class ProductService {
             limit = 10, 
             category, 
             search,
-            sort = '-createdAt',
+            sort = 'newest',  // Changed default sort
             minPrice,
             maxPrice
         } = query;
+        
+        // Handle sort options
+        let sortOptions = {};
+        switch (sort) {
+            case 'price_low':
+                sortOptions = { 'price.current': 1 };
+                break;
+            case 'price_high':
+                sortOptions = { 'price.current': -1 };
+                break;
+            case 'rating':
+                sortOptions = { 
+                    'metadata.rating.average': -1,
+                    'metadata.rating.count': -1 
+                };
+                break;
+            case 'popular':
+                sortOptions = { 'metadata.views': -1 };
+                break;
+            case 'oldest':
+                sortOptions = { createdAt: 1 };
+                break;
+            case 'newest':
+            default:
+                sortOptions = { createdAt: -1 };
+                break;
+        }
+
         const skip = (page - 1) * limit;
 
         // Build filter
         const filter = { status: 'active' };
-        if (category) filter.category = category;
+        
+        // Handle category filter
+        if (category) {
+            if (mongoose.Types.ObjectId.isValid(category)) {
+                filter.category = category;
+            } else {
+                // Find category by name first
+                const categoryDoc = await MarketCategory.findOne({ 
+                    name: { $regex: new RegExp(`^${category}$`, 'i') }
+                });
+                
+                if (categoryDoc) {
+                    filter.category = categoryDoc._id;
+                } else {
+                    // Return empty results if category not found
+                    return {
+                        products: [],
+                        pagination: {
+                            total: 0,
+                            pages: 0,
+                            currentPage: page,
+                            limit
+                        }
+                    };
+                }
+            }
+        }
+
+        // Add other filters
         if (search) {
             filter.$or = [
                 { name: { $regex: search, $options: 'i' } },
@@ -193,13 +249,14 @@ class ProductService {
             if (maxPrice) filter['price.current'].$lte = parseFloat(maxPrice);
         }
 
+        // Get products with pagination using sort options
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
                 .populate('category', 'name')
                 .populate('sellerId', 'businessName')
                 .skip(skip)
                 .limit(limit)
-                .sort(sort),
+                .sort(sortOptions),
             MarketProduct.countDocuments(filter)
         ]);
 
@@ -208,8 +265,8 @@ class ProductService {
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
-                currentPage: page,
-                limit
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
             }
         };
     }
@@ -317,16 +374,72 @@ class ProductService {
     }
 
     async deleteProduct(productId, sellerId) {
-        const product = await MarketProduct.findOneAndDelete({ 
-            _id: productId, 
-            sellerId 
-        });
-        
-        if (!product) {
-            throw { status: 404, message: 'Product not found' };
-        }
+        try {
+            // Validate IDs
+            if (!mongoose.Types.ObjectId.isValid(productId)) {
+                throw { 
+                    status: 400, 
+                    message: 'Invalid product ID format' 
+                };
+            }
 
-        return product;
+            if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+                throw { 
+                    status: 400, 
+                    message: 'Invalid seller ID format' 
+                };
+            }
+
+            // Find product and check ownership
+            const product = await MarketProduct.findOne({ 
+                _id: productId,
+                sellerId,
+                status: { $ne: 'deleted' } // Check if not already deleted
+            });
+            
+            if (!product) {
+                throw { 
+                    status: 404, 
+                    message: 'Product not found or already deleted' 
+                };
+            }
+
+            // Check if product has any active orders
+            const hasActiveOrders = await MarketOrder.findOne({
+                'items.productId': productId,
+                status: { $in: ['pending', 'processing', 'shipped'] }
+            });
+
+            if (hasActiveOrders) {
+                throw {
+                    status: 400,
+                    message: 'Cannot delete product with active orders'
+                };
+            }
+
+            // Soft delete by updating status
+            product.status = 'deleted';
+            await product.save();
+
+            // Return success response
+            return {
+                success: true,
+                message: 'Product deleted successfully',
+                data: {
+                    id: product._id,
+                    name: product.name,
+                    status: 'deleted',
+                    deletedAt: new Date()
+                }
+            };
+        } catch (error) {
+            // Ensure consistent error format
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to delete product',
+                error: error.stack
+            };
+        }
     }
 
     async getProductById(productId) {
@@ -665,6 +778,145 @@ class ProductService {
                 message: error.message
             };
         }
+    }
+
+    async getPopularProducts(limit = 4) {
+        try {
+            // Get products sorted by rating, views and sales
+            const products = await MarketProduct.find({ 
+                status: 'active',
+                'metadata.rating.count': { $gt: 0 } // Only products with ratings
+            })
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .sort({
+                'metadata.rating.average': -1, // Highest rated first
+                'metadata.sales': -1,         // Most sales second
+                'metadata.views': -1          // Most viewed third
+            })
+            .limit(limit);
+
+            // Format response with badges and labels
+            const formattedProducts = products.map(product => ({
+                id: product._id,
+                name: product.name,
+                slug: product.slug,
+                description: product.description,
+                price: {
+                    current: product.price.current,
+                    discount: product.price.discount || 0,
+                    compareAt: product.price.compareAt
+                },
+                category: {
+                    id: product.category._id,
+                    name: product.category.name
+                },
+                seller: {
+                    id: product.sellerId._id,
+                    businessName: product.sellerId.businessName
+                },
+                rating: product.metadata.rating,
+                badge: this.getProductBadge(product),
+                image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
+                stats: {
+                    sales: product.metadata.sales,
+                    views: product.metadata.views
+                }
+            }));
+
+            return {
+                products: formattedProducts,
+                total: formattedProducts.length
+            };
+        } catch (error) {
+            throw {
+                status: 500,
+                message: 'Failed to fetch popular products',
+                error: error.message
+            };
+        }
+    }
+
+    // Helper method to determine product badge
+    getProductBadge(product) {
+        if (product.metadata.sales > 100) return 'Best Seller';
+        if (product.metadata.rating.average >= 4.5) return 'Top Rated';
+        if (product.price.discount > 20) return 'On Sale';
+        if (new Date() - product.createdAt < 1000 * 60 * 60 * 24 * 7) return 'New Arrival';
+        return null;
+    }
+
+    async getTrendingProducts(limit = 4) {
+        try {
+            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+            // Get products sorted by recent views, sales and ratings
+            const products = await MarketProduct.find({ 
+                status: 'active',
+                updatedAt: { $gte: oneWeekAgo }
+            })
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .sort({
+                'metadata.views': -1,       // Most viewed first
+                'metadata.sales': -1,       // Most sales second
+                'metadata.rating.average': -1 // Highest rated third
+            })
+            .limit(limit);
+
+            // Format and enrich response
+            const formattedProducts = products.map(product => ({
+                id: product._id,
+                name: product.name,
+                slug: product.slug,
+                description: product.description,
+                price: {
+                    current: product.price.current,
+                    discount: product.price.discount || 0,
+                    compareAt: product.price.compareAt
+                },
+                category: {
+                    id: product.category._id,
+                    name: product.category.name
+                },
+                seller: {
+                    id: product.sellerId._id,
+                    businessName: product.sellerId.businessName
+                },
+                image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
+                badge: this.getTrendingBadge(product),
+                stats: {
+                    rating: product.metadata.rating,
+                    views: product.metadata.views,
+                    sales: product.metadata.sales
+                },
+                trending: {
+                    isHot: product.metadata.views > 1000,
+                    isTrending: product.metadata.sales > 50,
+                    lastUpdated: product.updatedAt
+                }
+            }));
+
+            return {
+                products: formattedProducts,
+                total: formattedProducts.length
+            };
+        } catch (error) {
+            throw {
+                status: 500,
+                message: 'Failed to fetch trending products',
+                error: error.message
+            };
+        }
+    }
+
+    // Helper method for trending badges
+    getTrendingBadge(product) {
+        if (product.metadata.views > 1000) return 'Hot';
+        if (product.metadata.sales > 50) return 'Trending';
+        if (Date.now() - product.createdAt < 1000 * 60 * 60 * 24 * 3) return 'New';
+        if (product.price.discount > 25) return 'Best Deal';
+        return null;
     }
 }
 

@@ -114,12 +114,16 @@ class ProductController {
 
     async deleteProduct(req, res) {
         try {
-            await productService.deleteProduct(req.params.id, req.user._id);
-            console.log(chalk.yellow(`✓ Product deleted: ${req.params.id}`));
-            res.json({ message: 'Product deleted successfully' });
+            const result = await productService.deleteProduct(req.params.id, req.user._id);
+            console.log(chalk.yellow(`✓ Product deleted: ${result.data.name}`));
+            res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Product deletion failed:', error));
-            res.status(error.status || 500).json({ message: error.message });
+            res.status(error.status || 500).json({
+                success: false,
+                message: error.message || 'Failed to delete product',
+                error: error.error || error.stack
+            });
         }
     }
 
@@ -146,6 +150,30 @@ class ProductController {
             res.json(stats);
         } catch (error) {
             console.error(chalk.red('✗ Dashboard stats fetch failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async getPopularProducts(req, res) {
+        try {
+            const limit = parseInt(req.query.limit) || 4;
+            const popular = await productService.getPopularProducts(limit);
+            console.log(chalk.green('✓ Popular products fetched successfully'));
+            res.json(popular);
+        } catch (error) {
+            console.error(chalk.red('✗ Popular products fetch failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async getTrendingProducts(req, res) {
+        try {
+            const limit = parseInt(req.query.limit) || 4;
+            const trending = await productService.getTrendingProducts(limit);
+            console.log(chalk.green('✓ Trending products fetched successfully'));
+            res.json(trending);
+        } catch (error) {
+            console.error(chalk.red('✗ Trending products fetch failed:', error));
             res.status(500).json({ message: error.message });
         }
     }

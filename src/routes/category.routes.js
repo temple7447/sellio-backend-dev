@@ -27,6 +27,37 @@ router.get('/', categoryController.getAllCategories);
 
 /**
  * @swagger
+ * /api/categories/stats:
+ *   get:
+ *     summary: Get all categories with stats and images
+ *     tags: [Categories]
+ *     responses:
+ *       200:
+ *         description: List of categories with product counts and images
+ */
+router.get('/stats', categoryController.getCategoryStats);
+
+/**
+ * @swagger
+ * /api/categories/popular:
+ *   get:
+ *     summary: Get popular categories with product counts
+ *     tags: [Categories]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 4
+ *         description: Number of categories to return
+ *     responses:
+ *       200:
+ *         description: List of popular categories with stats
+ */
+router.get('/popular', categoryController.getPopularCategories);
+
+/**
+ * @swagger
  * /api/categories:
  *   post:
  *     summary: Create a new category (Admin only)
