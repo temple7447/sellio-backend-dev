@@ -77,6 +77,23 @@ class AuthController {
         }
     }
 
+    async getPublicSellers(req, res) {
+        try {
+            const result = await authService.getPublicSellers(req.query);
+            console.log(chalk.green('✓ Public sellers fetched successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Public sellers fetch failed:', error));
+            const statusCode = error.status || 500;
+            const response = {
+                success: false,
+                message: error.message || 'Failed to fetch sellers',
+                error: error.error || error.message
+            };
+            res.status(statusCode).json(response);
+        }
+    }
+
     async getTopSellers(req, res) {
         try {
             const sellers = await authService.getTopSellers(req.query.limit);

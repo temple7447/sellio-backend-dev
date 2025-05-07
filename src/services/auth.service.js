@@ -562,6 +562,155 @@ class AuthService {
             };
         }
     }
+
+    async getPublicSellers(query = {}) {
+        try {
+            const { page = 1, limit = 12, search, sort = 'rating' } = query;
+            const skip = (page - 1) * limit;
+
+            // Build filter for sellers
+            const filter = {
+                role: 'seller',
+                isVerified: true,
+                businessName: { $exists: true, $ne: '' }, // Ensure business name exists
+                businessAddress: { $exists: true, $ne: '' } // Ensure business address exists
+            };
+
+            // Add search filter if provided
+            if (search) {
+                filter.$or = [
+                    { businessName: { $regex: search, $options: 'i' } },
+                    { businessAddress: { $regex: search, $options: 'i' } }
+                ];
+            }
+
+            // Get sellers with pagination and select more fields
+            const [sellers, total] = await Promise.all([
+                MarketUser.find(filter)
+                    .select('businessName businessAddress profileImage createdAt adminVerified')
+                    .lean() // Use lean for better performance
+                    .skip(skip)
+                    .limit(limit),
+                MarketUser.countDocuments(filter)
+            ]);
+
+            if (!sellers || !Array.isArray(sellers)) {
+                console.error('No sellers found in database');
+                return this.getEmptyResponse(page, limit);
+            }
+
+            console.log(`Found ${sellers.length} sellers before stats`);
+
+            // Get stats for each seller
+            const sellersWithStats = await Promise.all(sellers.map(async (seller) => {
+                try {
+                    // Get active products count and ratings in parallel
+                    const [totalProducts, ratingStats] = await Promise.all([
+                        MarketProduct.countDocuments({
+                            sellerId: seller._id,
+                            status: 'active'
+                        }),
+                        MarketProduct.aggregate([
+                            { 
+                                $match: { 
+                                    sellerId: seller._id,
+                                    status: 'active'
+                                }
+                            },
+                            {
+                                $group: {
+                                    _id: null,
+                                    averageRating: { $avg: '$metadata.rating.average' },
+                                    totalRatings: { $sum: '$metadata.rating.count' }
+                                }
+                            }
+                        ])
+                    ]);
+
+                    return {
+                        id: seller._id,
+                        businessName: seller.businessName,
+                        businessAddress: seller.businessAddress,
+                        logo: seller.profileImage || null,
+                        status: seller.adminVerified ? 'verified' : 'pending',
+                        rating: {
+                            average: parseFloat((ratingStats[0]?.averageRating || 0).toFixed(1)),
+                            count: ratingStats[0]?.totalRatings || 0
+                        },
+                        totalProducts,
+                        joinedDate: seller.createdAt,
+                        slug: this.generateSlug(seller.businessName)
+                    };
+                } catch (error) {
+                    console.error(`Failed to get stats for seller ${seller._id}:`, error);
+                    return null;
+                }
+            }));
+
+            // Filter and sort valid sellers
+            const validSellers = sellersWithStats.filter(seller => 
+                seller !== null && seller.businessName && seller.businessAddress
+            );
+            const sortedSellers = this.sortSellers(validSellers, sort);
+
+            return {
+                success: true,
+                sellers: sortedSellers,
+                pagination: {
+                    total,
+                    pages: Math.ceil(total / limit),
+                    currentPage: parseInt(page),
+                    limit: parseInt(limit)
+                }
+            };
+        } catch (error) {
+            console.error('Error in getPublicSellers:', error);
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to fetch sellers',
+                error: error.stack
+            };
+        }
+    }
+
+    // Helper method for empty response
+    getEmptyResponse(page, limit) {
+        return {
+            success: true,
+            sellers: [],
+            pagination: {
+                total: 0,
+                pages: 0,
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+    }
+
+    // Helper method to generate slug
+    generateSlug(name) {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    // Helper method to sort sellers
+    sortSellers(sellers, sortBy = 'rating') {
+        switch (sortBy) {
+            case 'products':
+                return sellers.sort((a, b) => b.totalProducts - a.totalProducts);
+            case 'rating':
+                return sellers.sort((a, b) => b.rating.average - a.rating.average);
+            case 'newest':
+                return sellers.sort((a, b) => new Date(b.joinedDate) - new Date(a.joinedDate));
+            case 'oldest':
+                return sellers.sort((a, b) => new Date(a.joinedDate) - new Date(b.joinedDate));
+            default:
+                return sellers;
+        }
+    }
 }
 
 module.exports = new AuthService();

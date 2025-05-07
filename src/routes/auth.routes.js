@@ -512,6 +512,39 @@ router.get('/sellers/top', authController.getTopSellers);
 
 /**
  * @swagger
+ * /api/auth/sellers:
+ *   get:
+ *     summary: Get all public sellers/vendors
+ *     tags: [Sellers]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [rating, products, newest, oldest]
+ *           default: rating
+ *     responses:
+ *       200:
+ *         description: List of sellers with pagination
+ */
+router.get('/sellers', authController.getPublicSellers);
+
+/**
+ * @swagger
  * /api/auth/register/customer:
  *   post:
  *     summary: Register a new customer
