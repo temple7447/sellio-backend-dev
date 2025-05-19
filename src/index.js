@@ -53,6 +53,26 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
 
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error(chalk.red('Error:'), err);
+    
+    if (err.status === 429) {
+        return res.status(429).json({
+            status: 'error',
+            message: err.message || 'Too many requests',
+            retryAfter: err.retryAfter || 900 // 15 minutes in seconds
+        });
+    }
+
+    const statusCode = err.status || 500;
+    res.status(statusCode).json({
+        status: 'error',
+        message: err.message || 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+
 app.listen(config.PORT, () => {
     console.log(chalk.blue(`✓ Server is running on port ${config.PORT}`));
 });

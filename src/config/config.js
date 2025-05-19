@@ -11,5 +11,13 @@ module.exports = {
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     ADMIN_SETUP_KEY: process.env.ADMIN_SETUP_KEY,
     PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
-    FRONTEND_URL: process.env.FRONTEND_URL
+    FRONTEND_URL: process.env.FRONTEND_URL,
+    RATE_LIMIT: {
+        WINDOW_MS: 15 * 60 * 1000, // 15 minutes
+        MAX_REQUESTS: 100,
+        AUTH_WINDOW_MS: 60 * 60 * 1000, // 1 hour
+        AUTH_MAX_REQUESTS: 30,
+        PRODUCT_WINDOW_MS: 15 * 60 * 1000,
+        PRODUCT_MAX_REQUESTS: 200
+    }
 };
