@@ -34,9 +34,11 @@ const app = express();
 // Apply security middleware
 securityMiddleware(app);
 
+// Add logger before CORS and other middleware
+app.use(requestLogger);
+
 app.use(cors());
 app.use(express.json());
-app.use(requestLogger);  // Add this line before routes
 
 // Swagger documentation route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
