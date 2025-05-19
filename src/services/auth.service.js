@@ -322,7 +322,7 @@ class AuthService {
         };
     }
 
-    async getPublicSellerProfile(sellerId) {
+    async getPublicSellerProfile(sellerId, requestingUserId = null) {
         const seller = await MarketUser.findOne({ 
             _id: sellerId, 
             role: 'seller',
@@ -332,6 +332,12 @@ class AuthService {
 
         if (!seller) {
             throw { status: 404, message: 'Seller not found' };
+        }
+
+        // Get requesting user if ID provided
+        let requestingUser = null;
+        if (requestingUserId) {
+            requestingUser = await MarketUser.findById(requestingUserId);
         }
 
         // Get seller's products count
@@ -352,7 +358,7 @@ class AuthService {
             }
         ]);
 
-        return {
+        const response = {
             businessName: seller.businessName,
             businessAddress: seller.businessAddress,
             rating: {
@@ -362,6 +368,22 @@ class AuthService {
             totalProducts,
             joinedDate: seller.createdAt
         };
+
+        // Only include bank account if requesting user is admin or the seller themselves
+        const canViewBankDetails = requestingUser && (
+            requestingUser.role === 'admin' || 
+            requestingUser._id.toString() === sellerId
+        );
+
+        if (canViewBankDetails && seller.bankAccount) {
+            response.bankAccount = {
+                bankName: seller.bankAccount.bankName,
+                accountNumber: seller.bankAccount.accountNumber,
+                accountName: seller.bankAccount.accountName
+            };
+        }
+
+        return response;
     }
 
     async updateSellerProfile(sellerId, updates, imageFile) {
@@ -374,11 +396,23 @@ class AuthService {
             throw { status: 404, message: 'Seller not found' };
         }
 
-        // Validate allowed updates
-        const allowedUpdates = ['fullName', 'businessName', 'businessAddress', 'phoneNumber'];
+        // Validate allowed updates - add bank account fields
+        const allowedUpdates = [
+            'fullName', 
+            'businessName', 
+            'businessAddress', 
+            'phoneNumber',
+            'bankAccount.bankName',
+            'bankAccount.accountNumber',
+            'bankAccount.accountName'
+        ];
+
         const updateKeys = Object.keys(updates);
         
-        const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
+        const isValidOperation = updateKeys.every(key => 
+            allowedUpdates.includes(key) || key.startsWith('bankAccount.')
+        );
+
         if (!isValidOperation) {
             throw { 
                 status: 400, 
@@ -387,14 +421,34 @@ class AuthService {
             };
         }
 
+        // Validate bank account number if provided
+        if (updates['bankAccount.accountNumber']) {
+            const accountNumber = updates['bankAccount.accountNumber'];
+            if (!/^\d{10}$/.test(accountNumber)) {
+                throw {
+                    status: 400,
+                    message: 'Invalid account number. Must be 10 digits'
+                };
+            }
+        }
+
         // Handle profile image upload
         if (imageFile) {
             const result = await uploadToCloudinary(imageFile, 'profile-images');
             updates.profileImage = result.secure_url;
         }
 
-        // Apply updates
-        Object.assign(seller, updates);
+        // Apply updates including nested bank account fields
+        Object.keys(updates).forEach(key => {
+            if (key.startsWith('bankAccount.')) {
+                const bankField = key.split('.')[1];
+                if (!seller.bankAccount) seller.bankAccount = {};
+                seller.bankAccount[bankField] = updates[key];
+            } else {
+                seller[key] = updates[key];
+            }
+        });
+
         await seller.save();
 
         return {
@@ -404,7 +458,12 @@ class AuthService {
                 businessName: seller.businessName,
                 businessAddress: seller.businessAddress,
                 phoneNumber: seller.phoneNumber,
-                profileImage: seller.profileImage
+                profileImage: seller.profileImage,
+                bankAccount: seller.bankAccount ? {
+                    bankName: seller.bankAccount.bankName,
+                    accountNumber: seller.bankAccount.accountNumber,
+                    accountName: seller.bankAccount.accountName
+                } : null
             }
         };
     }

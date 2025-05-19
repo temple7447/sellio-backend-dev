@@ -69,7 +69,10 @@ class AuthController {
 
     async getPublicSellerProfile(req, res) {
         try {
-            const profile = await authService.getPublicSellerProfile(req.params.sellerId);
+            const profile = await authService.getPublicSellerProfile(
+                req.params.sellerId,
+                req.user?._id // Pass the requesting user's ID if authenticated
+            );
             res.json(profile);
         } catch (error) {
             console.error(chalk.red('✗ Public seller profile fetch failed:', error));
