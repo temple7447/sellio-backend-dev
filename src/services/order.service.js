@@ -3,6 +3,7 @@ const MarketProduct = require('../models/MarketProduct');
 const { MarketUser } = require('../models/MarketUser');  // Fix import to use destructuring
 const axios = require('axios');
 const config = require('../config/config');
+const paystackService = require('../utils/paystack');
 
 class OrderService {
     async createOrder(orderData) {
@@ -82,95 +83,114 @@ class OrderService {
     }
 
     async createCustomerOrder(customerId, orderData) {
-        const { items, deliveryInfo } = orderData;
+        try {
+            const { items, shippingDetails } = orderData; // Changed from deliveryInfo to shippingDetails
 
-        // Validate delivery info
-        const requiredFields = ['fullName', 'phoneNumber', 'street', 'city', 'state', 'country', 'zipCode', 'deliveryMethod'];
-        for (const field of requiredFields) {
-            if (!deliveryInfo[field]) {
-                throw { 
-                    status: 400, 
-                    message: `Missing delivery info field: ${field}` 
+            if (!shippingDetails) {
+                throw {
+                    status: 400,
+                    message: 'Shipping details are required'
                 };
             }
-        }
 
-        // Get product details and validate inventory
-        const productIds = items.map(item => item.productId);
-        const products = await MarketProduct.find({ _id: { $in: productIds }, status: 'active' });
-        
-        let subtotal = 0;
-        const processedItems = [];
-
-        for (const item of items) {
-            const product = products.find(p => p._id.toString() === item.productId);
-            if (!product) {
-                throw { status: 400, message: `Product ${item.productId} not found` };
+            // Validate shipping details
+            const { fullName, phoneNumber, address } = shippingDetails;
+            if (!fullName || !phoneNumber || !address) {
+                throw {
+                    status: 400,
+                    message: 'Missing required shipping details'
+                };
             }
+
+            // Validate address fields
+            const requiredAddressFields = ['street', 'city', 'state', 'country', 'zipCode'];
+            for (const field of requiredAddressFields) {
+                if (!address[field]) {
+                    throw {
+                        status: 400,
+                        message: `Missing address field: ${field}`
+                    };
+                }
+            }
+
+            // Get product details and validate inventory
+            const productIds = items.map(item => item.productId);
+            const products = await MarketProduct.find({ _id: { $in: productIds }, status: 'active' });
             
-            if (product.inventory.quantity < item.quantity) {
-                throw { 
-                    status: 400, 
-                    message: `Insufficient inventory for ${product.name}` 
-                };
+            let subtotal = 0;
+            const processedItems = [];
+
+            for (const item of items) {
+                const product = products.find(p => p._id.toString() === item.productId);
+                if (!product) {
+                    throw { status: 400, message: `Product ${item.productId} not found` };
+                }
+                
+                if (product.inventory.quantity < item.quantity) {
+                    throw { 
+                        status: 400, 
+                        message: `Insufficient inventory for ${product.name}` 
+                    };
+                }
+
+                const itemPrice = product.price.current;
+                const itemTotal = itemPrice * item.quantity;
+                subtotal += itemTotal;
+
+                processedItems.push({
+                    productId: product._id,
+                    sellerId: product.sellerId,
+                    quantity: item.quantity,
+                    price: itemPrice
+                });
             }
 
-            const itemPrice = product.price.current;
-            const itemTotal = itemPrice * item.quantity;
-            subtotal += itemTotal;
+            // Calculate shipping cost (default to standard shipping for now)
+            const shippingCost = 1000; // Standard shipping cost
+            
+            // Calculate totals
+            const tax = subtotal * 0.05; // 5% tax
+            const final = subtotal + tax + shippingCost;
 
-            processedItems.push({
-                productId: product._id,
-                sellerId: product.sellerId,
-                quantity: item.quantity,
-                price: itemPrice
-            });
-        }
-
-        // Calculate shipping cost based on delivery method
-        const shippingCost = deliveryInfo.deliveryMethod === 'express' ? 2000 : 1000;
-        
-        // Calculate totals
-        const tax = subtotal * 0.05; // 5% tax
-        const final = subtotal + tax + shippingCost;
-
-        // Create order
-        const order = new MarketOrder({
-            customerId,
-            items: processedItems,
-            status: 'pending',
-            payment: {
-                method: 'paystack',
-                status: 'pending'
-            },
-            shipping: {
-                address: {
-                    fullName: deliveryInfo.fullName,
-                    phoneNumber: deliveryInfo.phoneNumber,
-                    street: deliveryInfo.street,
-                    city: deliveryInfo.city,
-                    state: deliveryInfo.state,
-                    country: deliveryInfo.country,
-                    zipCode: deliveryInfo.zipCode
+            // Create order
+            const order = new MarketOrder({
+                customerId,
+                items: processedItems,
+                status: 'pending',
+                payment: {
+                    method: 'paystack',
+                    status: 'pending'
                 },
-                method: deliveryInfo.deliveryMethod,
-                instructions: deliveryInfo.specialInstructions,
-                cost: shippingCost
-            },
-            totals: {
-                subtotal,
-                tax,
-                shipping: shippingCost,
-                final
-            }
-        });
+                shipping: {
+                    address: {
+                        fullName: shippingDetails.fullName,
+                        phoneNumber: shippingDetails.phoneNumber,
+                        ...shippingDetails.address
+                    },
+                    method: 'standard',
+                    cost: shippingCost
+                },
+                totals: {
+                    subtotal,
+                    tax,
+                    shipping: shippingCost,
+                    final
+                }
+            });
 
-        await order.save();
-        
-        // Populate order details
-        return await MarketOrder.findById(order._id)
-            .populate('items.productId')
-            .populate('items.sellerId', 'businessName');
+            await order.save();
+            
+            // Populate order details
+            return await MarketOrder.findById(order._id)
+                .populate('items.productId')
+                .populate('items.sellerId', 'businessName');
+        } catch (error) {
+            console.error('Order creation error:', error);
+            throw {
+                status: error.status || 400,
+                message: error.message || 'Failed to create order'
+            };
+        }
     }
 
     async initiatePayment(orderId) {
@@ -215,22 +235,9 @@ class OrderService {
         try {
             console.log('Verifying payment for reference:', reference);
 
-            const response = await axios.get(
-                `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`
-                    }
-                }
-            );
-
-            console.log('Paystack verification response:', response.data);
-
-            const { data } = response.data;
-            if (!data) {
-                throw new Error('Invalid response from Paystack');
-            }
-
+            // Use the new PayStack verification method
+            const paymentData = await paystackService.verifyTransaction(reference);
+            
             // Extract orderId from reference
             const orderId = reference.startsWith('ORD-') ? 
                 reference.replace('ORD-', '') : reference;
@@ -240,13 +247,28 @@ class OrderService {
                 throw { status: 404, message: 'Order not found' };
             }
 
-            if (data.status === 'success') {
-                order.status = 'confirmed';
-                order.payment.status = 'completed';
-                order.payment.transactionId = reference;
-                await order.save();
+            // Map PayStack status to order status
+            const transactionStatus = paystackService.getTransactionStatus(paymentData.status);
+            
+            // Update order based on payment status
+            order.status = transactionStatus === 'completed' ? 'confirmed' : transactionStatus;
+            order.payment.status = transactionStatus;
+            order.payment.transactionId = paymentData.reference;
+            order.payment.metadata = {
+                gateway: 'paystack',
+                channel: paymentData.channel,
+                paidAt: paymentData.paid_at,
+                cardDetails: paymentData.authorization ? {
+                    last4: paymentData.authorization.last4,
+                    cardType: paymentData.authorization.card_type,
+                    bank: paymentData.authorization.bank
+                } : null
+            };
 
-                // Update product inventory
+            await order.save();
+
+            // Update inventory only if payment was successful
+            if (transactionStatus === 'completed') {
                 for (const item of order.items) {
                     await MarketProduct.findByIdAndUpdate(
                         item.productId,
@@ -261,25 +283,28 @@ class OrderService {
             }
 
             return {
-                success: data.status === 'success',
-                order,
-                transaction: data
-            };
-        } catch (error) {
-            console.error('Payment verification error details:', {
-                reference,
-                message: error.message,
-                response: error.response?.data,
-                stack: error.stack
-            });
-
-            throw { 
-                status: 500, 
-                message: 'Payment verification failed',
-                details: {
-                    paystackError: error.response?.data,
-                    serverError: error.message
+                success: transactionStatus === 'completed',
+                order: {
+                    id: order._id,
+                    status: order.status,
+                    payment: order.payment
+                },
+                transaction: {
+                    reference: paymentData.reference,
+                    amount: paymentData.amount / 100, // Convert from kobo to naira
+                    status: transactionStatus,
+                    channel: paymentData.channel,
+                    paidAt: paymentData.paid_at,
+                    cardDetails: order.payment.metadata.cardDetails
                 }
+            };
+
+        } catch (error) {
+            console.error('Payment verification error:', error);
+            throw {
+                status: error.status || 500,
+                message: 'Payment verification failed',
+                details: error.message
             };
         }
     }
@@ -611,28 +636,34 @@ class OrderService {
         const startDate = timeRanges[timeframe];
 
         try {
-            // Get overview statistics
-            const [overview, orderStats] = await Promise.all([
-                MarketOrder.aggregate([
-                    { $match: { createdAt: { $gte: startDate } } },
-                    {
-                        $group: {
-                            _id: null,
-                            totalOrders: { $sum: 1 },
-                            totalRevenue: { $sum: '$totals.final' },
-                            avgOrderValue: { $avg: '$totals.final' }
-                        }
+            // Get all orders count and total customers count
+            const [totalOrdersCount, totalCustomers, pendingOrders] = await Promise.all([
+                MarketOrder.countDocuments({}), // Get all orders
+                MarketUser.countDocuments({ role: 'customer' }), // Get total customers
+                MarketOrder.countDocuments({ status: 'pending' }) // Get pending orders
+            ]);
+
+            // Get overview statistics for the selected timeframe
+            const overview = await MarketOrder.aggregate([
+                { $match: { createdAt: { $gte: startDate } } },
+                {
+                    $group: {
+                        _id: null,
+                        totalOrders: { $sum: 1 },
+                        totalRevenue: { $sum: '$totals.final' },
+                        avgOrderValue: { $avg: '$totals.final' }
                     }
-                ]),
-                MarketOrder.aggregate([
-                    { $match: { createdAt: { $gte: startDate } } },
-                    {
-                        $group: {
-                            _id: '$status',
-                            count: { $sum: 1 }
-                        }
+                }
+            ]);
+
+            // Get pending orders count by status
+            const orderStats = await MarketOrder.aggregate([
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 }
                     }
-                ])
+                }
             ]);
 
             // Get recent orders
@@ -641,100 +672,19 @@ class OrderService {
                 .limit(10)
                 .select('_id customerType totals.final status createdAt');
 
-            // Get sales chart data (last 6 months)
-            const salesChart = await MarketOrder.aggregate([
-                {
-                    $match: {
-                        status: { $ne: 'cancelled' },
-                        createdAt: { $gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) }
-                    }
-                },
-                {
-                    $group: {
-                        _id: {
-                            year: { $year: '$createdAt' },
-                            month: { $month: '$createdAt' }
-                        },
-                        orders: { $sum: 1 },
-                        revenue: { $sum: '$totals.final' }
-                    }
-                },
-                { $sort: { '_id.year': 1, '_id.month': 1 } }
-            ]);
-
-            // Get top selling products
-            const topProducts = await MarketOrder.aggregate([
-                { $match: { status: { $ne: 'cancelled' } } },
-                { $unwind: '$items' },
-                {
-                    $group: {
-                        _id: '$items.productId',
-                        totalOrders: { $sum: '$items.quantity' },
-                        revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
-                    }
-                },
-                { $sort: { revenue: -1 } },
-                { $limit: 5 },
-                {
-                    $lookup: {
-                        from: 'marketproducts',
-                        localField: '_id',
-                        foreignField: '_id',
-                        as: 'product'
-                    }
-                }
-            ]);
-
-            // Get top customers
-            const topCustomers = await MarketOrder.aggregate([
-                { $match: { customerId: { $exists: true }, status: { $ne: 'cancelled' } } },
-                {
-                    $group: {
-                        _id: '$customerId',
-                        totalOrders: { $sum: 1 },
-                        totalSpent: { $sum: '$totals.final' }
-                    }
-                },
-                { $sort: { totalSpent: -1 } },
-                { $limit: 5 },
-                {
-                    $lookup: {
-                        from: 'marketusers',
-                        localField: '_id',
-                        foreignField: '_id',
-                        as: 'customer'
-                    }
-                }
-            ]);
-
+            // Format the dashboard data
             return {
                 overview: {
-                    totalOrders: overview[0]?.totalOrders || 0,
+                    totalOrders: totalOrdersCount || 0, // Use total count instead of timeframe count
+                    totalCustomers: totalCustomers || 0, // Add total customers
+                    pendingOrders: pendingOrders || 0, // Add pending orders count
                     totalRevenue: overview[0]?.totalRevenue || 0,
-                    avgOrderValue: overview[0]?.avgOrderValue || 0,
-                    pendingOrders: orderStats.find(s => s._id === 'pending')?.count || 0
+                    avgOrderValue: overview[0]?.avgOrderValue || 0
                 },
                 recentOrders,
                 orderStats: Object.fromEntries(
                     orderStats.map(s => [s._id, s.count])
-                ),
-                salesChart: salesChart.map(s => ({
-                    date: new Date(s._id.year, s._id.month - 1).toLocaleString('default', { month: 'short', year: 'numeric' }),
-                    orders: s.orders,
-                    revenue: s.revenue
-                })),
-                topProducts: topProducts.map(p => ({
-                    productId: p._id,
-                    name: p.product[0]?.name,
-                    totalOrders: p.totalOrders,
-                    revenue: p.revenue
-                })),
-                topCustomers: topCustomers.map(c => ({
-                    customerId: c._id,
-                    name: c.customer[0]?.fullName,
-                    totalOrders: c.totalOrders,
-                    totalSpent: c.totalSpent
-                }))
+                )
             };
         } catch (error) {
             throw {

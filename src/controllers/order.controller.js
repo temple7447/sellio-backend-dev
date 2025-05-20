@@ -131,8 +131,8 @@ class OrderController {
         } catch (error) {
             console.error(chalk.red('✗ Dashboard statistics fetch failed:', error));
             res.status(error.status || 500).json({
-                message: error.message,
-                details: error.details
+                message: error.message || 'Failed to fetch dashboard statistics',
+                error: error.details || undefined
             });
         }
     }

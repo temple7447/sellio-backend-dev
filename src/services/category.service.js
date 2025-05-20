@@ -1,5 +1,6 @@
 const MarketCategory = require('../models/MarketCategory');
 const MarketProduct = require('../models/MarketProduct'); // Add this import
+const { uploadToCloudinary } = require('../utils/cloudinary');
 const chalk = require('chalk');
 
 class CategoryService {
@@ -263,28 +264,89 @@ class CategoryService {
         }
     }
 
-    async createCategory(categoryData) {
-        const { name } = categoryData;
+    async createCategory(categoryData, imageFile) {
+        try {
+            const { name } = categoryData;
 
-        // Check for existing category
-        const existingCategory = await MarketCategory.findOne({ 
-            name: { $regex: new RegExp(`^${name}$`, 'i') }
-        });
+            // Check for existing category
+            const existingCategory = await MarketCategory.findOne({ 
+                name: { $regex: new RegExp(`^${name}$`, 'i') }
+            });
 
-        if (existingCategory) {
-            throw { 
-                status: 400, 
-                message: 'Category with this name already exists' 
+            if (existingCategory) {
+                throw { 
+                    status: 400, 
+                    message: 'Category with this name already exists' 
+                };
+            }
+
+            // Upload image to Cloudinary if provided
+            let imageUrl = null;
+            if (imageFile) {
+                const result = await uploadToCloudinary(imageFile, 'categories');
+                if (!result || !result.secure_url) {
+                    throw { status: 500, message: 'Failed to upload category image' };
+                }
+                imageUrl = result.secure_url;
+            }
+
+            // Create new category with image
+            const category = new MarketCategory({
+                ...categoryData,
+                slug: MarketCategory.generateSlug(name),
+                image: imageUrl
+            });
+
+            return await category.save();
+        } catch (error) {
+            if (error.status) {
+                throw error;
+            }
+            throw {
+                status: 500,
+                message: 'Failed to create category',
+                error: error.message
             };
         }
+    }
 
-        // Create new category
-        const category = new MarketCategory({
-            ...categoryData,
-            slug: MarketCategory.generateSlug(name)
-        });
+    async deleteCategory(categoryId) {
+        try {
+            // Check if category exists
+            const category = await MarketCategory.findById(categoryId);
+            if (!category) {
+                throw {
+                    status: 404,
+                    message: 'Category not found'
+                };
+            }
 
-        return await category.save();
+            // Check if category has products
+            const hasProducts = await MarketProduct.exists({ category: categoryId });
+            if (hasProducts) {
+                throw {
+                    status: 400,
+                    message: 'Cannot delete category with existing products'
+                };
+            }
+
+            // Delete the category
+            await MarketCategory.findByIdAndDelete(categoryId);
+
+            return {
+                success: true,
+                message: 'Category deleted successfully',
+                data: {
+                    id: category._id,
+                    name: category.name
+                }
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to delete category'
+            };
+        }
     }
 }
 

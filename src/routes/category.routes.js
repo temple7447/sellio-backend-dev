@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { auth, isAdmin } = require('../middleware/auth');
 const categoryController = require('../controllers/category.controller');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * @swagger
@@ -60,18 +63,19 @@ router.get('/popular', categoryController.getPopularCategories);
  * @swagger
  * /api/categories:
  *   post:
- *     summary: Create a new category (Admin only)
+ *     summary: Create a new category with image (Admin only)
  *     tags: [Categories]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             required:
  *               - name
+ *               - image
  *             properties:
  *               name:
  *                 type: string
@@ -81,17 +85,41 @@ router.get('/popular', categoryController.getPopularCategories);
  *                 type: number
  *               parent:
  *                 type: string
- *                 description: Parent category ID
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Category created successfully
+ */
+router.post('/', auth, isAdmin, upload.single('image'), categoryController.createCategory);
+
+/**
+ * @swagger
+ * /api/categories/{id}:
+ *   delete:
+ *     summary: Delete a category (Admin only)
+ *     tags: [Categories]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Category deleted successfully
  *       400:
- *         description: Invalid input
+ *         description: Cannot delete category with products
  *       401:
- *         description: Unauthorized
+ *         description: Not authenticated
  *       403:
  *         description: Admin access required
+ *       404:
+ *         description: Category not found
  */
-router.post('/', auth, isAdmin, categoryController.createCategory);
+router.delete('/:id', auth, isAdmin, categoryController.deleteCategory);
 
 module.exports = router;

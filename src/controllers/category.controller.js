@@ -14,7 +14,7 @@ class CategoryController {
 
     async createCategory(req, res) {
         try {
-            const category = await categoryService.createCategory(req.body);
+            const category = await categoryService.createCategory(req.body, req.file);
             console.log(chalk.green('✓ Category created:', category.name));
             res.status(201).json(category);
         } catch (error) {
@@ -41,6 +41,20 @@ class CategoryController {
         } catch (error) {
             console.error(chalk.red('✗ Popular categories fetch failed:', error));
             res.status(500).json({ message: error.message });
+        }
+    }
+
+    async deleteCategory(req, res) {
+        try {
+            const result = await categoryService.deleteCategory(req.params.id);
+            console.log(chalk.yellow(`✓ Category deleted: ${result.data.name}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Category deletion failed:', error));
+            res.status(error.status || 500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 }

@@ -1,7 +1,6 @@
 const { MarketUser } = require('../models/MarketUser');
 const config = require('../config/config');
 const jwt = require('jsonwebtoken');
-
 class AdminService {
     async registerAdmin(data) {
         if (data.setupKey !== config.ADMIN_SETUP_KEY) {

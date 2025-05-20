@@ -166,6 +166,43 @@ router.get('/verify/:reference', orderController.verifyPayment);
 
 /**
  * @swagger
+ * /api/orders/verify-payment/{reference}:
+ *   get:
+ *     summary: Verify payment using Paystack reference
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Payment reference from Paystack (starts with 'ORD-')
+ *     responses:
+ *       200:
+ *         description: Payment verified successfully
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               order:
+ *                 _id: "65f12345678901234567890"
+ *                 status: "confirmed"
+ *                 payment:
+ *                   status: "completed"
+ *                   transactionId: "ORD-65f12345678901234567890"
+ *               transaction:
+ *                 reference: "ORD-65f12345678901234567890"
+ *                 status: "success"
+ *                 amount: 50000
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Payment verification failed
+ */
+router.get('/verify-payment/:reference', orderController.verifyPayment);
+
+/**
+ * @swagger
  * /api/orders/customer:
  *   get:
  *     summary: Get customer orders (authenticated customers only)
@@ -497,44 +534,7 @@ router.get('/admin/orders', auth, isAdmin, orderController.getAllOrders);
  *           default: month
  *     responses:
  *       200:
- *         description: Admin dashboard statistics
- *         content:
- *           application/json:
- *             example:
- *               overview:
- *                 totalOrders: 1250
- *                 totalRevenue: 125999.99
- *                 avgOrderValue: 100.80
- *                 pendingOrders: 45
- *               recentOrders:
- *                 - orderId: "65a123abc..."
- *                   customerType: "registered"
- *                   amount: 1059.99
- *                   status: "pending"
- *                   createdAt: "2024-01-20T10:00:00.000Z"
- *               orderStats:
- *                 pending: 45
- *                 confirmed: 150
- *                 processing: 80
- *                 shipped: 120
- *                 delivered: 800
- *                 cancelled: 55
- *               salesChart:
- *                 - date: "Jan 2024"
- *                   orders: 450
- *                   revenue: 45999.99
- *               topProducts:
- *                 - productId: "65c345ghi..."
- *                   name: "iPhone 14 Pro"
- *                   totalOrders: 120
- *                   revenue: 119998.80
- *               topCustomers:
- *                 - customerId: "65b234def..."
- *                   name: "John Doe"
- *                   totalOrders: 25
- *                   totalSpent: 24999.75
- *       401:
- *         description: Not authenticated
+ *         description: Dashboard statistics
  *       403:
  *         description: Admin access required
  */
