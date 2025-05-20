@@ -36,12 +36,26 @@ class ProductService {
             // Validate inventory
             const inventory = {
                 quantity: parseInt(productData.initialInventory) || 0,
-                sku: productData.sku || null,
                 lowStockAlert: parseInt(productData.lowStockAlert) || 5
             };
 
-            if (inventory.quantity < 0) {
-                throw { status: 400, message: 'Initial inventory cannot be negative' };
+            // Only add SKU if provided
+            if (productData.sku && productData.sku.trim()) {
+                if (!/^[A-Za-z0-9-_]+$/.test(productData.sku)) {
+                    throw {
+                        status: 400,
+                        message: 'SKU must contain only letters, numbers, hyphens and underscores'
+                    };
+                }
+                // Check if SKU already exists
+                const existingSku = await MarketProduct.findOne({ 'inventory.sku': productData.sku });
+                if (existingSku) {
+                    throw {
+                        status: 400,
+                        message: 'This SKU is already in use'
+                    };
+                }
+                inventory.sku = productData.sku.trim();
             }
 
             // Handle image upload
@@ -93,7 +107,7 @@ class ProductService {
                     discount: price.discount
                 },
                 category: category._id,
-                inventory,
+                inventory,  // Use the validated inventory object
                 images: imageUrls,
                 sellerId,
                 status: productData.status || 'draft'
@@ -109,6 +123,14 @@ class ProductService {
         } catch (error) {
             console.error('Product creation error:', error);
             
+            // Handle duplicate key errors
+            if (error.code === 11000) {
+                throw {
+                    status: 400,
+                    message: 'A product with this SKU already exists'
+                };
+            }
+
             // Handle mongoose validation errors
             if (error.name === 'ValidationError') {
                 throw {
@@ -375,50 +397,86 @@ class ProductService {
 
     async deleteProduct(productId, sellerId) {
         try {
-            // Validate product ID
+            // Check for valid MongoDB ObjectId
             if (!mongoose.Types.ObjectId.isValid(productId)) {
                 throw {
                     status: 400,
-                    message: 'Invalid product ID format',
-                    details: 'The provided product ID is not valid'
+                    code: 'INVALID_ID',
+                    message: 'Invalid product ID format'
                 };
             }
 
-            // Find and validate product
-            const product = await MarketProduct.findOne({ 
+            // Find product and check seller ownership
+            const product = await MarketProduct.findOne({
                 _id: productId,
-                sellerId,
-                status: { $ne: 'deleted' }
+                sellerId: sellerId
             });
 
             if (!product) {
                 throw {
                     status: 404,
-                    message: 'Product not found',
-                    details: 'The product may have been deleted or does not belong to you'
+                    code: 'NOT_FOUND',
+                    message: 'Product not found or you do not have permission to delete it'
                 };
             }
 
-            // Perform soft delete
-            product.status = 'deleted';
-            await product.save();
+            // Check if product has any active orders
+            const hasActiveOrders = await MarketOrder.exists({
+                'items.productId': productId,
+                status: { $in: ['pending', 'processing', 'shipped'] }
+            });
+
+            if (hasActiveOrders) {
+                throw {
+                    status: 400,
+                    code: 'ACTIVE_ORDERS',
+                    message: 'Cannot delete product with active orders'
+                };
+            }
+
+            // Store product details before deletion for response
+            const productDetails = {
+                id: product._id,
+                name: product.name,
+                deletedAt: new Date()
+            };
+
+            // Delete the product from database
+            await MarketProduct.deleteOne({ _id: productId });
 
             return {
                 success: true,
-                message: 'Product deleted successfully',
-                data: {
-                    id: product._id,
-                    name: product.name,
-                    deletedAt: new Date()
-                }
+                message: 'Product permanently deleted successfully',
+                data: productDetails
             };
         } catch (error) {
-            if (error.status) {
+            // Log the full error for debugging
+            console.error('Product deletion error:', {
+                error,
+                stack: error.stack,
+                productId,
+                sellerId
+            });
+
+            // Handle known errors
+            if (error.code) {
                 throw error;
             }
+
+            // Handle MongoDB errors
+            if (error.name === 'MongoError') {
+                throw {
+                    status: 500,
+                    code: 'DB_ERROR',
+                    message: 'Database operation failed'
+                };
+            }
+
+            // Handle unexpected errors
             throw {
                 status: 500,
-                message: 'Internal server error',
+                code: 'UNKNOWN_ERROR',
+                message: 'Failed to delete product',
                 details: error.message
             };
         }

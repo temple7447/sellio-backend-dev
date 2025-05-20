@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const chalk = require('chalk');
 const multer = require('multer');
 const { auth, isVerified, isSeller, isAdmin, isAdminVerified } = require('../middleware/auth');
 const productController = require('../controllers/product.controller');
@@ -393,24 +394,27 @@ router.patch('/:id', auth, isSeller, productController.updateProduct);
  *         required: true
  *         schema:
  *           type: string
- *         description: Product ID to delete
  *     responses:
  *       200:
  *         description: Product deleted successfully
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               message: Product deleted successfully
- *               data:
- *                 id: "65a123abc..."
- *                 name: "Product name"
  *       403:
  *         description: Not authorized to delete this product
  *       404:
  *         description: Product not found
  */
-router.delete('/:id', auth, isSeller, productController.deleteProduct);
+router.delete('/:id', auth, isSeller, isVerified, isAdminVerified, async (req, res) => {
+    try {
+        const result = await productService.deleteProduct(req.params.id, req.user._id);
+        res.json(result);
+    } catch (error) {
+        console.error(chalk.red('✗ Product deletion failed:', error));
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.message || 'Failed to delete product',
+            error: error.details || error.message
+        });
+    }
+});
 
 /**
  * @swagger

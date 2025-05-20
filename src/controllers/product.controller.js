@@ -118,14 +118,21 @@ class ProductController {
             console.log(chalk.yellow(`✓ Product deleted: ${result.data.name}`));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Product deletion failed:', error));
-            const statusCode = error.status || 500;
+            console.error(chalk.red('✗ Product deletion failed:', {
+                code: error.code,
+                message: error.message,
+                productId: req.params.id,
+                sellerId: req.user._id
+            }));
+
             const errorResponse = {
                 success: false,
+                code: error.code || 'UNKNOWN_ERROR',
                 message: error.message || 'Failed to delete product',
-                error: error.details || error.message
+                details: error.details || undefined
             };
-            res.status(statusCode).json(errorResponse);
+
+            res.status(error.status || 500).json(errorResponse);
         }
     }
 

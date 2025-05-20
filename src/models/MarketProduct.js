@@ -45,8 +45,10 @@ const productSchema = new mongoose.Schema({
         },
         sku: {
             type: String,
-            unique: true,
-            sparse: true
+            sparse: true,  // Allows multiple null/undefined values
+            index: true,   // Index the field
+            unique: false, // Remove unique constraint
+            trim: true
         },
         lowStockAlert: {
             type: Number,
@@ -59,7 +61,7 @@ const productSchema = new mongoose.Schema({
     }],
     status: {
         type: String,
-        enum: ['draft', 'active', 'inactive', 'deleted'],
+        enum: ['draft', 'active', 'inactive'],  // Remove 'deleted' status
         default: 'draft'
     },
     metadata: {
@@ -93,5 +95,15 @@ productSchema.pre('save', function(next) {
     }
     next();
 });
+
+// Remove or comment out the SKU auto-generation middleware
+// productSchema.pre('save', async function(next) {
+//     if (!this.sku) {
+//         const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+//         const timestamp = Date.now().toString(36).toUpperCase();
+//         this.sku = `P-${randomPart}-${timestamp}`;
+//     }
+//     next();
+// });
 
 module.exports = mongoose.model('MarketProduct', productSchema);

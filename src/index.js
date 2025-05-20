@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const chalk = require('chalk');
 const config = require('./config/config');
-const categoryService = require('./services/category.service');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const authRoutes = require('./routes/auth.routes');
@@ -44,9 +43,8 @@ app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 mongoose.connect(config.MONGODB_URI)
-    .then(async () => {
+    .then(() => {
         console.log(chalk.green('✓ Connected to MongoDB'));
-        await categoryService.seedCategories();
     })
     .catch(err => console.error(chalk.red('✗ MongoDB connection error:'), err));
 
