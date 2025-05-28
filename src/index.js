@@ -39,6 +39,21 @@ app.use(requestLogger);
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => {
+    res.json({
+        status: 'success',
+        message: 'Welcome to CampusTrade API',
+        version: '1.0.0',
+        documentation: '/api-docs',
+        endpoints: {
+            auth: '/api/auth',
+            products: '/api/products',
+            orders: '/api/orders',
+            categories: '/api/categories'
+        }
+    });
+});
+
 // Swagger documentation route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -55,20 +70,44 @@ app.use('/api/categories', categoryRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error(chalk.red('Error:'), err);
+    const timestamp = new Date().toISOString();
     
     if (err.status === 429) {
+        console.error(chalk.red(`[${timestamp}] Rate Limit Exceeded:`), {
+            ip: req.ip,
+            path: req.path,
+            method: req.method,
+            headers: req.headers['user-agent'],
+            error: err.message
+        });
+        
         return res.status(429).json({
             status: 'error',
             message: err.message || 'Too many requests',
-            retryAfter: err.retryAfter || 900 // 15 minutes in seconds
+            retryAfter: err.retryAfter || 900, // Properly set to 15 minutes in seconds
+            nextValidRequestTime: new Date(Date.now() + ((err.retryAfter || 900) * 1000)).toISOString(),
+            details: {
+                windowMs: err.windowMs || '15m',
+                currentPath: req.path,
+                rateLimitType: req.path.includes('/api/auth') ? 'auth' : 
+                              req.path.includes('/api/products') ? 'product' : 'api'
+            }
         });
     }
+
+    console.error(chalk.red(`[${timestamp}] Error:`), {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+        error: err
+    });
 
     const statusCode = err.status || 500;
     res.status(statusCode).json({
         status: 'error',
         message: err.message || 'Internal server error',
+        timestamp,
+        path: req.path,
         ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
 });
