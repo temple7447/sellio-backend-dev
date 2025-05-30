@@ -15,8 +15,8 @@ module.exports = {
     RATE_LIMIT: {
         WINDOW_MS: 15 * 60 * 1000, // 15 minutes
         MAX_REQUESTS: 100,
-        AUTH_WINDOW_MS: 60 * 60 * 1000, // 1 hour
-        AUTH_MAX_REQUESTS: 30,
+        AUTH_WINDOW_MS: 1 * 60 * 1000, // 1 hour
+        AUTH_MAX_REQUESTS: 200,
         PRODUCT_WINDOW_MS: 15 * 60 * 1000,
         PRODUCT_MAX_REQUESTS: 200
     }
