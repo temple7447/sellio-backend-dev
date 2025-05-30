@@ -36,7 +36,12 @@ securityMiddleware(app);
 // Add logger before CORS and other middleware
 app.use(requestLogger);
 
-app.use(cors());
+app.use(cors({
+    origin:"*",
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -72,29 +77,6 @@ app.use('/api/categories', categoryRoutes);
 app.use((err, req, res, next) => {
     const timestamp = new Date().toISOString();
     
-    if (err.status === 429) {
-        console.error(chalk.red(`[${timestamp}] Rate Limit Exceeded:`), {
-            ip: req.ip,
-            path: req.path,
-            method: req.method,
-            headers: req.headers['user-agent'],
-            error: err.message
-        });
-        
-        return res.status(429).json({
-            status: 'error',
-            message: err.message || 'Too many requests',
-            retryAfter: err.retryAfter || 900, // Properly set to 15 minutes in seconds
-            nextValidRequestTime: new Date(Date.now() + ((err.retryAfter || 900) * 1000)).toISOString(),
-            details: {
-                windowMs: err.windowMs || '15m',
-                currentPath: req.path,
-                rateLimitType: req.path.includes('/api/auth') ? 'auth' : 
-                              req.path.includes('/api/products') ? 'product' : 'api'
-            }
-        });
-    }
-
     console.error(chalk.red(`[${timestamp}] Error:`), {
         ip: req.ip,
         path: req.path,
