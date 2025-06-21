@@ -770,6 +770,67 @@ class AuthService {
                 return sellers;
         }
     }
+
+    async forgotPassword(email) {
+        const user = await MarketUser.findOne({ email });
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+        // Generate OTP
+        const otp = this.generateOTP();
+        // Remove any existing OTPs for this user
+        await MarketOTP.deleteMany({ email });
+        // Save new OTP
+        await new MarketOTP({ email, otp, userType: user.role }).save();
+        // Send OTP email
+        const emailResult = await sendOTP(email, otp);
+        if (!emailResult.success) {
+            throw {
+                status: 500,
+                message: 'Failed to send OTP email',
+                error: emailResult.error
+            };
+        }
+        return {
+            message: 'Password reset OTP sent successfully',
+            email,
+            emailSent: {
+                success: true,
+                messageId: emailResult.messageId
+            }
+        };
+    }
+
+    async verifyPasswordResetOTP({ email, otp }) {
+        const otpRecord = await MarketOTP.findOne({
+            email,
+            otp,
+            createdAt: { $gt: new Date(Date.now() - 5 * 60 * 1000) }
+        });
+        if (!otpRecord) {
+            throw { status: 400, message: 'Invalid or expired OTP' };
+        }
+        return { success: true, message: 'OTP verified successfully' };
+    }
+
+    async resetPassword({ email, otp, newPassword }) {
+        const otpRecord = await MarketOTP.findOne({
+            email,
+            otp,
+            createdAt: { $gt: new Date(Date.now() - 5 * 60 * 1000) }
+        });
+        if (!otpRecord) {
+            throw { status: 400, message: 'Invalid or expired OTP' };
+        }
+        const user = await MarketUser.findOne({ email });
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+        user.password = newPassword;
+        await user.save();
+        await MarketOTP.deleteOne({ _id: otpRecord._id });
+        return { success: true, message: 'Password reset successful' };
+    }
 }
 
 module.exports = new AuthService();

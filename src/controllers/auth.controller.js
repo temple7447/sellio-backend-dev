@@ -151,6 +151,39 @@ class AuthController {
             res.status(error.status || 400).json({ message: error.message });
         }
     }
+
+    async forgotPassword(req, res) {
+        try {
+            const result = await authService.forgotPassword(req.body.email);
+            console.log(chalk.green('✓ Password reset OTP sent successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Password reset failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async verifyPasswordResetOTP(req, res) {
+        try {
+            const result = await authService.verifyPasswordResetOTP(req.body);
+            console.log(chalk.green('✓ Password reset OTP verified'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ OTP verification failed:', error.message));
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    async resetPassword(req, res) {
+        try {
+            const result = await authService.resetPassword(req.body);
+            console.log(chalk.green('✓ Password reset successful'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Password reset failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();
