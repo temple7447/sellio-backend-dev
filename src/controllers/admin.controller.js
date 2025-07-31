@@ -34,6 +34,17 @@ class AdminController {
             res.status(error.status || 500).json({ message: error.message });
         }
     }
+
+    async deleteUser(req, res) {
+        try {
+            const result = await adminService.deleteUser(req.params.userId);
+            console.log(chalk.green('✓ User deleted successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ User deletion failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AdminController();

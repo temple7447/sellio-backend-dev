@@ -98,6 +98,26 @@ class AdminService {
             }
         };
     }
+
+    async deleteUser(userId) {
+        const user = await MarketUser.findById(userId);
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        if (user.role === 'admin') {
+            throw { status: 403, message: 'Cannot delete admin users' };
+        }
+
+        await MarketUser.findByIdAndDelete(userId);
+        return {
+            message: 'User deleted successfully',
+            deletedUser: {
+                email: user.email,
+                role: user.role
+            }
+        };
+    }
 }
 
 module.exports = new AdminService();

@@ -483,6 +483,14 @@ class ProductService {
     }
 
     async getProductById(productId) {
+        // Add validation for ObjectId
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+            throw { 
+                status: 400, 
+                message: 'Invalid product ID format' 
+            };
+        }
+
         const product = await MarketProduct.findById(productId)
             .populate('category', 'name')
             .populate('sellerId', 'businessName');
