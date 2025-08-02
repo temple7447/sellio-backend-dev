@@ -37,9 +37,10 @@ securityMiddleware(app);
 app.use(requestLogger);
 
 app.use(cors({
-    origin:"*",
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: "*",
+    methods: "*",
+    allowedHeaders: "*",
+    exposedHeaders: "*",
     credentials: true
 }));
 app.use(express.json());
