@@ -111,4 +111,7 @@ router.get('/seller/:sellerId/public', async (req, res) => {
 
 router.patch('/:id/status', auth, isSeller, productController.updateProductStatus);
 
+// Add this new route for admin delete
+router.delete('/admin/:id', auth, isAdmin, productController.adminDeleteProduct);
+
 module.exports = router;

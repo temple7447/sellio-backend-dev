@@ -966,6 +966,59 @@ class ProductService {
         if (product.price.discount > 25) return 'Best Deal';
         return null;
     }
+
+    async adminDeleteProduct(productId) {
+        try {
+            if (!mongoose.Types.ObjectId.isValid(productId)) {
+                throw {
+                    status: 400,
+                    code: 'INVALID_ID',
+                    message: 'Invalid product ID format'
+                };
+            }
+
+            const product = await MarketProduct.findById(productId);
+
+            if (!product) {
+                throw {
+                    status: 404,
+                    code: 'NOT_FOUND',
+                    message: 'Product not found'
+                };
+            }
+
+            // Store product details before deletion
+            const productDetails = {
+                id: product._id,
+                name: product.name,
+                sellerId: product.sellerId,
+                deletedAt: new Date()
+            };
+
+            // Delete the product
+            await MarketProduct.deleteOne({ _id: productId });
+
+            return {
+                success: true,
+                message: 'Product deleted successfully by admin',
+                data: productDetails
+            };
+        } catch (error) {
+            console.error('Admin product deletion error:', {
+                error,
+                productId
+            });
+
+            if (error.code) throw error;
+
+            throw {
+                status: 500,
+                code: 'DELETION_ERROR',
+                message: 'Failed to delete product',
+                details: error.message
+            };
+        }
+    }
 }
 
 module.exports = new ProductService();

@@ -186,6 +186,28 @@ class ProductController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    
+    async adminDeleteProduct(req, res) {
+        try {
+            const result = await productService.adminDeleteProduct(req.params.id);
+            console.log(chalk.yellow(`✓ Product deleted by admin: ${result.data.name}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin product deletion failed:', {
+                code: error.code,
+                message: error.message,
+                productId: req.params.id
+            }));
+
+            res.status(error.status || 500).json({
+                success: false,
+                code: error.code || 'UNKNOWN_ERROR',
+                message: error.message || 'Failed to delete product',
+                details: error.details || undefined
+            });
+        }
+    }
 }
 
 module.exports = new ProductController();
