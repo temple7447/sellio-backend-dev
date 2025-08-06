@@ -23,26 +23,7 @@ class CategoryController {
         }
     }
 
-    async getCategoryStats(req, res) {
-        try {
-            const stats = await categoryService.getCategoryStats();
-            res.json(stats);
-        } catch (error) {
-            console.error(chalk.red('✗ Category stats fetch failed:', error));
-            res.status(500).json({ message: error.message });
-        }
-    }
 
-    async getPopularCategories(req, res) {
-        try {
-            const limit = parseInt(req.query.limit) || 4;
-            const popular = await categoryService.getPopularCategories(limit);
-            res.json(popular);
-        } catch (error) {
-            console.error(chalk.red('✗ Popular categories fetch failed:', error));
-            res.status(500).json({ message: error.message });
-        }
-    }
 
     async deleteCategory(req, res) {
         try {

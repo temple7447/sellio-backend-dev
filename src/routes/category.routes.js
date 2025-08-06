@@ -10,9 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/', categoryController.getAllCategories);
 
 
-router.get('/stats', categoryController.getCategoryStats);
 
-router.get('/popular', categoryController.getPopularCategories);
 
 
 router.post('/', auth, isAdmin, upload.single('image'), categoryController.createCategory);
