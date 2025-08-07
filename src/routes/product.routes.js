@@ -114,4 +114,10 @@ router.patch('/:id/status', auth, isSeller, productController.updateProductStatu
 // Add this new route for admin delete
 router.delete('/admin/:id', auth, isAdmin, productController.adminDeleteProduct);
 
+// Add this new route for admin product status update
+router.patch('/admin/:id/status', auth, isAdmin, productController.adminUpdateProductStatus);
+
+// Add this new route for admin product update
+router.put('/admin/:id', auth, isAdmin, productController.adminUpdateProduct);
+
 module.exports = router;

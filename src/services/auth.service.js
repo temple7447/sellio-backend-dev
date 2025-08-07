@@ -831,6 +831,62 @@ class AuthService {
         await MarketOTP.deleteOne({ _id: otpRecord._id });
         return { success: true, message: 'Password reset successful' };
     }
+
+    async addBankInfo(sellerId, bankData) {
+        try {
+            const seller = await MarketUser.findOne({ 
+                _id: sellerId, 
+                role: 'seller' 
+            });
+
+            if (!seller) {
+                throw { status: 404, message: 'Seller not found' };
+            }
+
+            // Validate required fields
+            const requiredFields = ['bankName', 'accountNumber', 'accountName'];
+            for (const field of requiredFields) {
+                if (!bankData[field]) {
+                    throw { 
+                        status: 400, 
+                        message: `Missing required field: ${field}`
+                    };
+                }
+            }
+
+            // Validate account number (assuming Nigerian bank account number)
+            if (!/^\d{10}$/.test(bankData.accountNumber)) {
+                throw {
+                    status: 400,
+                    message: 'Invalid account number. Must be 10 digits'
+                };
+            }
+
+            // Update bank information
+            seller.bankAccount = {
+                bankName: bankData.bankName,
+                accountNumber: bankData.accountNumber,
+                accountName: bankData.accountName
+            };
+
+            await seller.save();
+
+            return {
+                success: true,
+                message: 'Bank information added successfully',
+                data: {
+                    bankName: seller.bankAccount.bankName,
+                    accountNumber: seller.bankAccount.accountNumber,
+                    accountName: seller.bankAccount.accountName
+                }
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message
+            };
+        }
+    }
 }
 
 module.exports = new AuthService();

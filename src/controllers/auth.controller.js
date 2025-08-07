@@ -184,6 +184,17 @@ class AuthController {
             res.status(error.status || 400).json({ message: error.message });
         }
     }
+
+    async addBankInfo(req, res) {
+        try {
+            const result = await authService.addBankInfo(req.user._id, req.body);
+            console.log(chalk.green('✓ Bank information added successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Adding bank info failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();

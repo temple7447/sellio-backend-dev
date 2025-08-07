@@ -1,5 +1,6 @@
 const chalk = require('chalk');
 const productService = require('../services/product.service');
+const adminService = require('../services/admin.service');
 
 class ProductController {
     async createProduct(req, res) {
@@ -35,7 +36,7 @@ class ProductController {
 
     async getAdminProducts(req, res) {
         try {
-            const result = await productService.getAdminProducts(req.query);
+            const result = await adminService.getAdminProducts(req.query);
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Admin products fetch failed:', error));
@@ -45,7 +46,7 @@ class ProductController {
 
     async getActiveAdminProducts(req, res) {
         try {
-            const result = await productService.getActiveAdminProducts(req.query);
+            const result = await adminService.getActiveAdminProducts(req.query);
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Active products fetch failed:', error));
@@ -190,7 +191,7 @@ class ProductController {
     
     async adminDeleteProduct(req, res) {
         try {
-            const result = await productService.adminDeleteProduct(req.params.id);
+            const result = await adminService.adminDeleteProduct(req.params.id);
             console.log(chalk.yellow(`✓ Product deleted by admin: ${result.data.name}`));
             res.json(result);
         } catch (error) {
@@ -205,6 +206,44 @@ class ProductController {
                 code: error.code || 'UNKNOWN_ERROR',
                 message: error.message || 'Failed to delete product',
                 details: error.details || undefined
+            });
+        }
+    }
+
+    async adminUpdateProductStatus(req, res) {
+        try {
+            const result = await adminService.adminUpdateProductStatus(
+                req.params.id,
+                req.body.status
+            );
+            console.log(chalk.blue(`✓ Admin updated product ${result.name} status to: ${result.status}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin product status update failed:', error));
+            res.status(error.status || 400).json({ 
+                success: false,
+                message: error.message 
+            });
+        }
+    }
+
+    async adminUpdateProduct(req, res) {
+        try {
+            const result = await adminService.adminUpdateProduct(
+                req.params.id,
+                req.body
+            );
+            console.log(chalk.blue(`✓ Admin updated product: ${result.name}`));
+            res.json({
+                success: true,
+                message: 'Product updated successfully',
+                data: result
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ Admin product update failed:', error));
+            res.status(error.status || 400).json({ 
+                success: false,
+                message: error.message 
             });
         }
     }

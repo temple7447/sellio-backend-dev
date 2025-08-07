@@ -293,96 +293,6 @@ class ProductService {
         };
     }
 
-    async getAdminProducts(query) {
-        const { 
-            status, 
-            page = 1, 
-            limit = 10,
-            sellerId,
-            category,
-            search,
-            sort = '-createdAt'
-        } = query;
-        const skip = (page - 1) * limit;
-
-        // Build filter
-        const filter = {};
-        if (status) filter.status = status;
-        if (sellerId) filter.sellerId = sellerId;
-        if (category) filter.category = category;
-        if (search) {
-            filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
-            ];
-        }
-
-        const [products, total] = await Promise.all([
-            MarketProduct.find(filter)
-                .populate('sellerId', 'businessName email')
-                .populate('category', 'name')
-                .skip(skip)
-                .limit(limit)
-                .sort(sort),
-            MarketProduct.countDocuments(filter)
-        ]);
-
-        return {
-            products,
-            pagination: {
-                total,
-                pages: Math.ceil(total / limit),
-                currentPage: page,
-                limit
-            }
-        };
-    }
-
-    async getActiveAdminProducts(query) {
-        const { 
-            page = 1, 
-            limit = 10,
-            sort = '-createdAt'
-        } = query;
-        const skip = (page - 1) * limit;
-
-        // Build filter for active products only
-        const filter = { status: 'active' };
-
-        const [products, total] = await Promise.all([
-            MarketProduct.find(filter)
-                .populate('sellerId', 'businessName email')
-                .populate('category', 'name')
-                .skip(skip)
-                .limit(limit)
-                .sort(sort),
-            MarketProduct.countDocuments(filter)
-        ]);
-
-        // Format response
-        const formattedProducts = products.map(product => ({
-            id: product._id,
-            name: product.name,
-            price: product.price,
-            category: product.category,
-            seller: product.sellerId,
-            inventory: product.inventory,
-            images: product.images,
-            status: product.status,
-            metadata: product.metadata,
-            createdAt: product.createdAt
-        }));
-
-        return {
-            products: formattedProducts,
-            pagination: {
-                total,
-                pages: Math.ceil(total / limit),
-                currentPage: parseInt(page),
-                limit: parseInt(limit)
-            }
-        };
-    }
 
     async updateProduct(productId, sellerId, updates) {
         const product = await MarketProduct.findOne({ _id: productId, sellerId });
@@ -967,58 +877,9 @@ class ProductService {
         return null;
     }
 
-    async adminDeleteProduct(productId) {
-        try {
-            if (!mongoose.Types.ObjectId.isValid(productId)) {
-                throw {
-                    status: 400,
-                    code: 'INVALID_ID',
-                    message: 'Invalid product ID format'
-                };
-            }
+  
 
-            const product = await MarketProduct.findById(productId);
-
-            if (!product) {
-                throw {
-                    status: 404,
-                    code: 'NOT_FOUND',
-                    message: 'Product not found'
-                };
-            }
-
-            // Store product details before deletion
-            const productDetails = {
-                id: product._id,
-                name: product.name,
-                sellerId: product.sellerId,
-                deletedAt: new Date()
-            };
-
-            // Delete the product
-            await MarketProduct.deleteOne({ _id: productId });
-
-            return {
-                success: true,
-                message: 'Product deleted successfully by admin',
-                data: productDetails
-            };
-        } catch (error) {
-            console.error('Admin product deletion error:', {
-                error,
-                productId
-            });
-
-            if (error.code) throw error;
-
-            throw {
-                status: 500,
-                code: 'DELETION_ERROR',
-                message: 'Failed to delete product',
-                details: error.message
-            };
-        }
-    }
+  
 }
 
 module.exports = new ProductService();

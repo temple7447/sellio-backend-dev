@@ -45,6 +45,27 @@ class AdminController {
             res.status(error.status || 500).json({ message: error.message });
         }
     }
+
+    async adminUpdateUser(req, res) {
+        try {
+            const result = await adminService.adminUpdateUser(
+                req.params.userId,
+                req.body
+            );
+            console.log(chalk.green(`✓ User updated successfully: ${result.email}`));
+            res.json({
+                success: true,
+                message: 'User updated successfully',
+                data: result
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ User update failed:', error));
+            res.status(error.status || 400).json({ 
+                success: false,
+                message: error.message 
+            });
+        }
+    }
 }
 
 module.exports = new AdminController();
