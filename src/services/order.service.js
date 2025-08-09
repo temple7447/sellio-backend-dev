@@ -4,6 +4,7 @@ const { MarketUser } = require('../models/MarketUser');  // Fix import to use de
 const axios = require('axios');
 const config = require('../config/config');
 const paystackService = require('../utils/paystack');
+const mongoose = require('mongoose');  // Add this import at the top
 
 class OrderService {
     async createOrder(orderData) {
@@ -717,11 +718,14 @@ class OrderService {
             // Add search functionality
             if (search) {
                 filter.$or = [
-                    // Search by order ID
-                    { _id: { $regex: search, $options: 'i' } },
                     // Search by customer email (both registered and guest)
                     { 'guestEmail': { $regex: search, $options: 'i' } },
                 ];
+
+                // Only add ObjectId search if valid ObjectId
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    filter.$or.push({ _id: new mongoose.Types.ObjectId(search) });
+                }
 
                 // Also search in registered customer emails
                 const customers = await MarketUser.find({
@@ -735,7 +739,7 @@ class OrderService {
                 }
             }
 
-            // Execute queries
+            // Execute queries with error handling
             const [orders, total] = await Promise.all([
                 MarketOrder.find(filter)
                     .populate('customerId', 'email fullName')
@@ -746,9 +750,28 @@ class OrderService {
                     .populate('items.sellerId', 'businessName')
                     .sort(sort)
                     .skip(skip)
-                    .limit(limit),
+                    .limit(limit)
+                    .lean(),  // Use lean for better performance
                 MarketOrder.countDocuments(filter)
-            ]);
+            ]).catch(err => {
+                throw {
+                    status: 500,
+                    message: 'Database query failed',
+                    details: err.message
+                };
+            });
+
+            if (!orders) {
+                return {
+                    orders: [],
+                    pagination: {
+                        total: 0,
+                        pages: 0,
+                        currentPage: parseInt(page),
+                        limit: parseInt(limit)
+                    }
+                };
+            }
 
             // Format response
             const formattedOrders = orders.map(order => ({
@@ -762,37 +785,30 @@ class OrderService {
                     email: order.guestEmail,
                     fullName: order.shipping?.address?.fullName
                 },
-                items: order.items.map(item => ({
-                    product: {
+                items: (order.items || []).map(item => ({
+                    product: item.productId ? {
                         id: item.productId._id,
                         name: item.productId.name,
                         image: item.productId.images?.[0]?.url
-                    },
-                    seller: {
+                    } : null,
+                    seller: item.sellerId ? {
                         id: item.sellerId._id,
                         name: item.sellerId.businessName
-                    },
+                    } : null,
                     quantity: item.quantity,
                     price: item.price,
                     total: item.price * item.quantity
                 })),
                 status: order.status,
-                payment: {
-                    status: order.payment.status,
-                    method: order.payment.method,
-                    transactionId: order.payment.transactionId
-                },
-                shipping: {
-                    address: order.shipping.address,
-                    cost: order.shipping.cost,
-                    tracking: order.shipping.tracking
-                },
+                payment: order.payment,
+                shipping: order.shipping,
                 totals: order.totals,
                 createdAt: order.createdAt,
                 updatedAt: order.updatedAt
             }));
 
             return {
+                success: true,
                 orders: formattedOrders,
                 pagination: {
                     total,
@@ -803,10 +819,11 @@ class OrderService {
             };
 
         } catch (error) {
+            console.error('Admin orders fetch error:', error);
             throw {
-                status: 500,
-                message: 'Failed to fetch orders',
-                error: error.message
+                status: error.status || 500,
+                message: error.message || 'Failed to fetch orders',
+                details: error.details || error.stack
             };
         }
     }
