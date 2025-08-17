@@ -795,7 +795,6 @@ class ProductService {
         }
     }
 
-    // Helper method to determine product badge
     getProductBadge(product) {
         if (product.metadata.sales > 100) return 'Best Seller';
         if (product.metadata.rating.average >= 4.5) return 'Top Rated';
