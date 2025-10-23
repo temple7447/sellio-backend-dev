@@ -1,12 +1,19 @@
 const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
+    // Optional for guests; present for registered customers
     customerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'MarketUser',
-        required: true
+        required: false
     },
-   
+
+    // For guest checkouts
+    guestEmail: {
+        type: String,
+        trim: true
+    },
+
     items: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -36,27 +43,33 @@ const orderSchema = new mongoose.Schema({
     payment: {
         method: {
             type: String,
-            required: true
+            default: 'paystack'
         },
         status: {
             type: String,
-            enum: ['pending', 'completed', 'failed', 'refunded'],
+            enum: ['pending', 'completed', 'failed', 'refunded', 'processing'],
             default: 'pending'
         },
-        transactionId: String
+        transactionId: String,
+        metadata: {}
     },
     shipping: {
         address: {
+            fullName: String,
+            phoneNumber: String,
+            email: String, // optional, useful for guests
             street: String,
             city: String,
             state: String,
             zipCode: String,
             country: String
         },
+        method: { type: String, default: 'standard' },
         tracking: {
             number: String,
             url: String
         },
+        estimatedDelivery: Date,
         cost: Number
     },
     totals: {
@@ -67,10 +80,12 @@ const orderSchema = new mongoose.Schema({
         final: Number
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    strict: true
 });
 
-// Add index for better query performance
+// Indexes
 orderSchema.index({ guestEmail: 1 });
+orderSchema.index({ 'items.sellerId': 1 });
 
 module.exports = mongoose.model('MarketOrder', orderSchema);

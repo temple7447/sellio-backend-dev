@@ -66,7 +66,13 @@ class AdminService {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
                 governmentId: user.governmentId,
-                adminVerified: user.adminVerified
+                adminVerified: user.adminVerified,
+                hasBankInfo: !!(user.bankAccount && (user.bankAccount.bankName || user.bankAccount.accountNumber || user.bankAccount.accountName)),
+                bankAccount: user.bankAccount ? {
+                    bankName: user.bankAccount.bankName || null,
+                    accountNumber: user.bankAccount.accountNumber || null,
+                    accountName: user.bankAccount.accountName || null
+                } : null
             })
         }));
 
@@ -402,6 +408,27 @@ class AdminService {
                 message: error.message
             };
         }
+    }
+    async getSellerBankInfo(sellerId) {
+        const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
+        if (!seller) {
+            throw { status: 404, message: 'Seller not found' };
+        }
+        const bank = seller.bankAccount || null;
+        return {
+            success: true,
+            seller: {
+                id: seller._id,
+                email: seller.email,
+                businessName: seller.businessName
+            },
+            hasBankInfo: !!bank,
+            bankAccount: bank ? {
+                bankName: bank.bankName || null,
+                accountNumber: bank.accountNumber || null,
+                accountName: bank.accountName || null
+            } : null
+        };
     }
 }
 

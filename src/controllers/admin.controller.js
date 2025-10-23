@@ -66,6 +66,17 @@ class AdminController {
             });
         }
     }
+
+    async getSellerBankInfo(req, res) {
+        try {
+            const result = await adminService.getSellerBankInfo(req.params.sellerId);
+            console.log(chalk.green('✓ Seller bank info fetched'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Fetching seller bank info failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AdminController();

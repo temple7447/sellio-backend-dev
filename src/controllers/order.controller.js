@@ -87,6 +87,17 @@ class OrderController {
         }
     }
 
+    async confirmPickup(req, res) {
+        try {
+            const result = await orderService.confirmPickup(req.user._id, req.params.orderId);
+            console.log(chalk.green('✓ Pickup confirmed'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Pickup confirmation failed:', error));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
+
     async initializeCustomerPayment(req, res) {
         try {
             const result = await orderService.initializeCustomerPayment(req.user._id, req.params.orderId);

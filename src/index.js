@@ -12,6 +12,8 @@ const securityMiddleware = require('./middleware/security');
 const requestLogger = require('./middleware/logger');
 const multer = require('multer');
 const categoryRoutes = require('./routes/category.routes');
+const testimonialRoutes = require('./routes/testimonial.routes');
+const reviewRoutes = require('./routes/review.routes');
 
 // Configure multer for memory storage
 const upload = multer({
@@ -55,7 +57,8 @@ app.get("/", (req, res) => {
             auth: '/api/auth',
             products: '/api/products',
             orders: '/api/orders',
-            categories: '/api/categories'
+            categories: '/api/categories',
+            testimonials: '/api/testimonials'
         }
     });
 });
@@ -73,6 +76,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/testimonials', testimonialRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -103,8 +103,8 @@ class OrderService {
                 };
             }
 
-            // Validate address fields
-            const requiredAddressFields = ['street', 'city', 'state', 'country', 'zipCode'];
+            // Validate address fields (zipCode is optional)
+            const requiredAddressFields = ['street', 'city', 'state', 'country'];
             for (const field of requiredAddressFields) {
                 if (!address[field]) {
                     throw {
@@ -236,12 +236,19 @@ class OrderService {
         try {
             console.log('Verifying payment for reference:', reference);
 
-            // Use the new PayStack verification method
-            const paymentData = await paystackService.verifyTransaction(reference);
+            // Accept either Paystack reference (e.g., ORD-<orderId>) or raw orderId
+            let refToVerify = reference;
+            const isObjectId = /^[a-f\d]{24}$/i.test(reference);
+            if (isObjectId && !reference.startsWith('ORD-')) {
+                refToVerify = `ORD-${reference}`;
+            }
+
+            // Verify with Paystack using the correct reference
+            const paymentData = await paystackService.verifyTransaction(refToVerify);
             
             // Extract orderId from reference
-            const orderId = reference.startsWith('ORD-') ? 
-                reference.replace('ORD-', '') : reference;
+            const orderId = refToVerify.startsWith('ORD-') ? 
+                refToVerify.replace('ORD-', '') : reference;
 
             const order = await MarketOrder.findById(orderId);
             if (!order) {
@@ -451,6 +458,23 @@ class OrderService {
                 quantity: item.quantity
             }))
         };
+    }
+
+    async confirmPickup(customerId, orderId) {
+        const order = await MarketOrder.findOne({ _id: orderId, customerId });
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+        if (order.payment.status !== 'completed') {
+            throw { status: 400, message: 'Payment not completed for this order' };
+        }
+        if (order.status === 'delivered') {
+            return { success: true, message: 'Already confirmed', data: order };
+        }
+        order.status = 'delivered';
+        order.shipping.estimatedDelivery = new Date();
+        await order.save();
+        return { success: true, message: 'Pickup confirmed', data: order };
     }
 
     async initializeCustomerPayment(customerId, orderId) {

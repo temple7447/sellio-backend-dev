@@ -887,6 +887,36 @@ class AuthService {
             };
         }
     }
+
+    async getBankInfo(sellerId) {
+        try {
+            const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
+            if (!seller) {
+                throw { status: 404, message: 'Seller not found' };
+            }
+
+            const bank = seller.bankAccount || null;
+            return {
+                success: true,
+                message: bank ? 'Bank information fetched successfully' : 'No bank information found',
+                data: bank ? {
+                    bankName: bank.bankName || null,
+                    accountNumber: bank.accountNumber || null,
+                    accountName: bank.accountName || null
+                } : null
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message
+            };
+        }
+    }
+
+    async updateBankInfo(sellerId, bankData) {
+        // Reuse addBankInfo logic for upsert/update
+        return this.addBankInfo(sellerId, bankData);
+    }
 }
 
 module.exports = new AuthService();

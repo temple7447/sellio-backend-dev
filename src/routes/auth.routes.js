@@ -106,6 +106,9 @@ router.post('/verify-reset-otp', authController.verifyPasswordResetOTP);
 router.post('/reset-password', authController.resetPassword);
 router.delete('/admin/users/:userId', auth, isAdmin, adminController.deleteUser);
 router.put('/admin/users/:userId', auth, isAdmin, adminController.adminUpdateUser);
+router.get('/admin/sellers/:sellerId/bank-info', auth, isAdmin, adminController.getSellerBankInfo);
 router.post('/seller/bank-info', auth, isSeller, authController.addBankInfo);
+router.get('/seller/bank-info', auth, isSeller, authController.getBankInfo);
+router.put('/seller/bank-info', auth, isSeller, authController.updateBankInfo);
 
 module.exports = router;
