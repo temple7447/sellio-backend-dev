@@ -3,11 +3,16 @@ const chalk = require('chalk');
 const config = require('../config/config');
 
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    // service: 'gmail',
+      host: 'smtp.gmail.com',
+       port: 587, // or 587
+    secure: false, // true for 465, false for 587
     auth: {
+
         user: config.EMAIL_USER,
         pass: config.EMAIL_PASS,
     },
+     connectionTimeout: 10000
 });
 
 const sendOTP = async (email, otp) => {
