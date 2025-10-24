@@ -15,6 +15,15 @@ const transporter = nodemailer.createTransport({
      connectionTimeout: 10000
 });
 
+// Verify SMTP connection configuration
+transporter.verify((error, success) => {
+    if (error) {
+        console.error(chalk.red('SMTP connection error:'), error);
+    } else {
+        console.log(chalk.green('SMTP server is ready'));
+    }
+});
+
 const sendOTP = async (email, otp) => {
     try {
         const mailResponse = await transporter.sendMail({
