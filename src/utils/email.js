@@ -1,34 +1,51 @@
-const nodemailer = require('nodemailer');
+const Nodemailer = require('nodemailer');
+const { MailtrapTransport } = require('mailtrap');
 const chalk = require('chalk');
 const config = require('../config/config');
 
-const transporter = nodemailer.createTransport({
-    // service: 'gmail',
-      host: 'smtp.gmail.com',
-       port: 587, // or 587
-    secure: false, // true for 465, false for 587
-    auth: {
-
-        user: config.EMAIL_USER,
-        pass: config.EMAIL_PASS,
-    },
-     connectionTimeout: 10000
-});
-
-// Verify SMTP connection configuration
-transporter.verify((error, success) => {
-    if (error) {
-        console.error(chalk.red('SMTP connection error:'), error);
-    } else {
-        console.log(chalk.green('SMTP server is ready'));
+// Initialize Mailtrap transport
+let transport;
+const initializeMailtrap = () => {
+    try {
+        if (!config.MAILTRAP_TOKEN) {
+            throw new Error('Mailtrap token not configured');
+        }
+        
+        transport = Nodemailer.createTransport(
+            MailtrapTransport({
+                token: config.MAILTRAP_TOKEN,
+            })
+        );
+        
+        console.log(chalk.green('✓ Mailtrap is configured and ready'));
+        console.log(chalk.blue('Sender:'), `${config.MAILTRAP_SENDER_NAME} <${config.MAILTRAP_SENDER_EMAIL}>`);
+    } catch (error) {
+        console.error(chalk.red('✗ Mailtrap configuration error:'), error.message);
     }
-});
+};
+
+// Initialize on startup
+initializeMailtrap();
 
 const sendOTP = async (email, otp) => {
     try {
-        const mailResponse = await transporter.sendMail({
-            from: config.EMAIL_USER,
-            to: email,
+        // Validate required Mailtrap configuration
+        if (!config.MAILTRAP_TOKEN) {
+            throw new Error('Mailtrap token not configured');
+        }
+
+        if (!transport) {
+            throw new Error('Mailtrap transport not initialized');
+        }
+
+        const sender = {
+            address: config.MAILTRAP_SENDER_EMAIL,
+            name: config.MAILTRAP_SENDER_NAME,
+        };
+
+        const emailData = {
+            from: sender,
+            to: [email],
             subject: 'Your One-Time Password (OTP) - Market Vendor',
             html: `
                 <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #f7f7f7; padding: 40px 0;">
@@ -51,9 +68,13 @@ const sendOTP = async (email, otp) => {
                   </div>
                 </div>
             `,
-        });
+            text: `Market Vendor - Your OTP: ${otp}. This code is valid for 5 minutes. If you did not request this, please ignore this email.`,
+            category: 'OTP Verification'
+        };
 
-        console.log(chalk.green('✓ Email sent successfully'));
+        const mailResponse = await transport.sendMail(emailData);
+
+        console.log(chalk.green('✓ Email sent successfully via Mailtrap'));
         console.log(chalk.blue('Message ID:'), mailResponse.messageId);
         
         return {
