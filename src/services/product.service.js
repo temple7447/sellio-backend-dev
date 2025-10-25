@@ -107,6 +107,7 @@ class ProductService {
                     discount: price.discount
                 },
                 category: category._id,
+                brand: productData.brand,
                 inventory,  // Use the validated inventory object
                 images: imageUrls,
                 sellerId,
@@ -189,14 +190,22 @@ class ProductService {
     }
 
     async getPublicProducts(query) {
+        // Log incoming request parameters
+        console.log('\n🔍 Public Products Search Request:', {
+            timestamp: new Date().toISOString(),
+            parameters: query
+        });
+        
         const { 
             page = 1, 
             limit = 10, 
             category, 
             search,
-            sort = 'newest',  // Changed default sort
+            sort = 'newest',
             minPrice,
-            maxPrice
+            maxPrice,
+            brands,
+            minRating
         } = query;
         
         // Handle sort options
@@ -270,6 +279,36 @@ class ProductService {
             if (minPrice) filter['price.current'].$gte = parseFloat(minPrice);
             if (maxPrice) filter['price.current'].$lte = parseFloat(maxPrice);
         }
+        
+        // Brand filter (sellers) - supports multiple brands
+        if (brands) {
+            const brandArray = Array.isArray(brands) ? brands : brands.split(',');
+            // Find sellers by businessName
+            const sellers = await MarketUser.find({
+                businessName: { $in: brandArray.map(b => new RegExp(`^${b.trim()}$`, 'i')) },
+                role: 'seller'
+            }).select('_id');
+            
+            if (sellers.length > 0) {
+                filter.sellerId = { $in: sellers.map(s => s._id) };
+            } else {
+                // Return empty results if no sellers found
+                return {
+                    products: [],
+                    pagination: {
+                        total: 0,
+                        pages: 0,
+                        currentPage: page,
+                        limit
+                    }
+                };
+            }
+        }
+        
+        // Rating filter
+        if (minRating) {
+            filter['metadata.rating.average'] = { $gte: parseFloat(minRating) };
+        }
 
         // Get products with pagination using sort options
         const [products, total] = await Promise.all([
@@ -282,7 +321,7 @@ class ProductService {
             MarketProduct.countDocuments(filter)
         ]);
 
-        return {
+        const response = {
             products,
             pagination: {
                 total,
@@ -291,6 +330,17 @@ class ProductService {
                 limit: parseInt(limit)
             }
         };
+        
+        // Log response summary
+        console.log('✅ Public Products Response:', {
+            timestamp: new Date().toISOString(),
+            productsCount: products.length,
+            totalProducts: total,
+            filters: { category, search, minPrice, maxPrice, brands, minRating, sort },
+            pagination: response.pagination
+        });
+        
+        return response;
     }
 
 

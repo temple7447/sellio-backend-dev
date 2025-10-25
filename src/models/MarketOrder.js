@@ -75,6 +75,8 @@ const orderSchema = new mongoose.Schema({
     totals: {
         subtotal: Number,
         tax: Number,
+        escrowProtection: Number,
+        service: Number,
         shipping: Number,
         discount: Number,
         final: Number

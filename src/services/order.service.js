@@ -53,10 +53,11 @@ class OrderService {
             });
         }
 
-        // Calculate totals
-        const tax = subtotal * 0.05; // 5% tax
-        const shipping = 1000; // Fixed shipping cost
-        const final = subtotal + tax + shipping;
+        // Calculate totals with new fee structure
+        const tax = 250; // Fixed tax
+        const escrowProtection = subtotal * 0.025; // 2.5% of subtotal
+        const service = 50; // Fixed service fee
+        const final = subtotal + tax + escrowProtection + service;
 
         // Create order with guest information
         const order = new MarketOrder({
@@ -68,13 +69,13 @@ class OrderService {
                 status: 'pending'
             },
             shipping: {
-                address: shippingAddress,
-                cost: shipping
+                address: shippingAddress
             },
             totals: {
                 subtotal,
                 tax,
-                shipping,
+                escrowProtection,
+                service,
                 final
             }
         });
@@ -146,12 +147,11 @@ class OrderService {
                 });
             }
 
-            // Calculate shipping cost (default to standard shipping for now)
-            const shippingCost = 1000; // Standard shipping cost
-            
-            // Calculate totals
-            const tax = subtotal * 0.05; // 5% tax
-            const final = subtotal + tax + shippingCost;
+            // Calculate totals with new fee structure
+            const tax = 250; // Fixed tax
+            const escrowProtection = subtotal * 0.025; // 2.5% of subtotal
+            const service = 50; // Fixed service fee
+            const final = subtotal + tax + escrowProtection + service;
 
             // Create order
             const order = new MarketOrder({
@@ -168,13 +168,13 @@ class OrderService {
                         phoneNumber: shippingDetails.phoneNumber,
                         ...shippingDetails.address
                     },
-                    method: 'standard',
-                    cost: shippingCost
+                    method: 'standard'
                 },
                 totals: {
                     subtotal,
                     tax,
-                    shipping: shippingCost,
+                    escrowProtection,
+                    service,
                     final
                 }
             });
@@ -384,6 +384,8 @@ class OrderService {
             totals: {
                 subtotal: order.totals.subtotal,
                 tax: order.totals.tax,
+                escrowProtection: order.totals.escrowProtection,
+                service: order.totals.service,
                 shipping: order.totals.shipping,
                 final: order.totals.final
             }
@@ -538,6 +540,8 @@ class OrderService {
                     totals: {
                         subtotal: order.totals.subtotal,
                         tax: order.totals.tax,
+                        escrowProtection: order.totals.escrowProtection,
+                        service: order.totals.service,
                         shipping: order.totals.shipping,
                         final: order.totals.final
                     }

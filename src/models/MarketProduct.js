@@ -37,6 +37,10 @@ const productSchema = new mongoose.Schema({
         ref: 'MarketCategory',
         required: true
     },
+    brand: {
+        type: String,
+        trim: true
+    },
     inventory: {
         quantity: {
             type: Number,
