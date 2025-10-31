@@ -217,6 +217,20 @@ class AuthController {
             res.status(error.status || 400).json({ message: error.message });
         }
     }
+
+    async uploadSellerProfileImage(req, res) {
+        try {
+            const result = await authService.uploadSellerProfileImage(
+                req.user._id,
+                req.file
+            );
+            console.log(chalk.green('✓ Seller profile image updated successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Profile image upload failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();

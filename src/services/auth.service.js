@@ -361,6 +361,7 @@ class AuthService {
         const response = {
             businessName: seller.businessName,
             businessAddress: seller.businessAddress,
+            phoneNumber: seller.phoneNumber,
             rating: {
                 average: ratingStats[0]?.averageRating || 0,
                 count: ratingStats[0]?.totalRatings || 0
@@ -562,7 +563,9 @@ class AuthService {
                 role: 'seller',
                 isVerified: true,
                 adminVerified: true
-            }).limit(parseInt(limit));
+            })
+            .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
+            .limit(parseInt(limit));
 
             // Get product and rating stats for each seller
             const sellerStats = await Promise.all(sellers.map(async (seller) => {
@@ -593,6 +596,7 @@ class AuthService {
                     id: seller._id,
                     businessName: seller.businessName,
                     businessAddress: seller.businessAddress,
+                    phoneNumber: seller.phoneNumber,
                     rating: {
                         average: parseFloat((ratingStats[0]?.averageRating || 0).toFixed(1)),
                         count: ratingStats[0]?.totalRatings || 0
@@ -646,7 +650,7 @@ class AuthService {
             // Get sellers with pagination and select more fields
             const [sellers, total] = await Promise.all([
                 MarketUser.find(filter)
-                    .select('businessName businessAddress profileImage createdAt adminVerified')
+                    .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
                     .lean() // Use lean for better performance
                     .skip(skip)
                     .limit(limit),
@@ -690,6 +694,7 @@ class AuthService {
                         id: seller._id,
                         businessName: seller.businessName,
                         businessAddress: seller.businessAddress,
+                        phoneNumber: seller.phoneNumber,
                         logo: seller.profileImage || null,
                         status: seller.adminVerified ? 'verified' : 'pending',
                         rating: {
@@ -916,6 +921,32 @@ class AuthService {
     async updateBankInfo(sellerId, bankData) {
         // Reuse addBankInfo logic for upsert/update
         return this.addBankInfo(sellerId, bankData);
+    }
+
+    async uploadSellerProfileImage(sellerId, imageFile) {
+        try {
+            const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
+            if (!seller) {
+                throw { status: 404, message: 'Seller not found' };
+            }
+            if (!imageFile) {
+                throw { status: 400, message: 'profileImage file is required' };
+            }
+
+            const result = await uploadToCloudinary(imageFile, 'profile-images');
+            seller.profileImage = result.secure_url;
+            await seller.save();
+
+            return {
+                message: 'Profile image updated successfully',
+                profileImage: seller.profileImage
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to upload profile image'
+            };
+        }
     }
 }
 

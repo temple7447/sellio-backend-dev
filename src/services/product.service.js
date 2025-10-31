@@ -578,177 +578,35 @@ class ProductService {
     }
 
     async getSellerDashboardStats(sellerId) {
-        const today = new Date();
-        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-        const twoMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 2, today.getDate());
+        // Overall, all-time stats for the seller (no month-based calculations)
+        // Totals are computed across the full dataset.
 
-        // Get current month's statistics
-        const [currentProducts, currentOrders] = await Promise.all([
-            MarketProduct.countDocuments({ 
-                sellerId,
-                createdAt: { $gte: lastMonth }
-            }),
-            MarketOrder.countDocuments({
-                'items.sellerId': sellerId,
-                createdAt: { $gte: lastMonth }
-            })
+        // Aggregate total sales from PAID orders only (payment.status = 'completed')
+        const salesAgg = await MarketOrder.aggregate([
+            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId), 'payment.status': 'completed' } },
+            { $unwind: '$items' },
+            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
+            { $group: { _id: null, total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } }
         ]);
 
-        // Get previous month's statistics for comparison
-        const [previousProducts, previousOrders] = await Promise.all([
-            MarketProduct.countDocuments({
-                sellerId,
-                createdAt: { 
-                    $gte: twoMonthsAgo,
-                    $lt: lastMonth
-                }
-            }),
-            MarketOrder.countDocuments({
-                'items.sellerId': sellerId,
-                createdAt: { 
-                    $gte: twoMonthsAgo,
-                    $lt: lastMonth
-                }
-            })
+        // Count unique customers (registered + guests) across all time
+        const uniqueCustomersAgg = await MarketOrder.aggregate([
+            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
+            { $group: { _id: { $cond: [ { $ifNull: ['$customerId', false] }, '$customerId', '$guestEmail' ] } } },
+            { $count: 'total' }
         ]);
 
-        // Calculate total sales amount for current month
-        const currentSales = await MarketOrder.aggregate([
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-                    'status': 'completed',
-                    createdAt: { $gte: lastMonth }
-                }
-            },
-            {
-                $unwind: '$items'
-            },
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId)
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
-                }
-            }
-        ]);
-
-        // Calculate total sales amount for previous month
-        const previousSales = await MarketOrder.aggregate([
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-                    'status': 'completed',
-                    createdAt: { 
-                        $gte: twoMonthsAgo,
-                        $lt: lastMonth
-                    }
-                }
-            },
-            {
-                $unwind: '$items'
-            },
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId)
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
-                }
-            }
-        ]);
-
-        // Get last 6 months sales overview
-        const salesOverview = await MarketOrder.aggregate([
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-                    'status': 'completed',
-                    createdAt: { 
-                        $gte: new Date(today.getFullYear(), today.getMonth() - 6, 1)
-                    }
-                }
-            },
-            {
-                $unwind: '$items'
-            },
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId)
-                }
-            },
-            {
-                $group: {
-                    _id: { 
-                        month: { $month: '$createdAt' },
-                        year: { $year: '$createdAt' }
-                    },
-                    amount: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
-                }
-            },
-            {
-                $sort: { '_id.year': 1, '_id.month': 1 }
-            }
-        ]);
-
-        // Get unique customer count
-        const uniqueCustomers = await MarketOrder.aggregate([
-            {
-                $match: {
-                    'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-                    'status': { $in: ['confirmed', 'processing', 'shipped', 'delivered'] }
-                }
-            },
-            {
-                $group: {
-                    _id: {
-                        $cond: [
-                            { $ifNull: ['$customerId', false] },
-                            '$customerId',
-                            '$guestEmail'
-                        ]
-                    }
-                }
-            },
-            {
-                $count: 'total'
-            }
-        ]);
-
-        const totalCustomers = uniqueCustomers[0]?.total || 0;
-
-        // Calculate growth percentages
+        const totalSales = salesAgg[0]?.total || 0;
         const totalProducts = await MarketProduct.countDocuments({ sellerId });
         const totalOrders = await MarketOrder.countDocuments({ 'items.sellerId': sellerId });
-        const currentSalesTotal = currentSales[0]?.total || 0;
-        const previousSalesTotal = previousSales[0]?.total || 0;
+        const totalCustomers = uniqueCustomersAgg[0]?.total || 0;
 
-        const salesGrowth = previousSalesTotal ? 
-            ((currentSalesTotal - previousSalesTotal) / previousSalesTotal) * 100 : 0;
-        const productGrowth = previousProducts ? 
-            ((currentProducts - previousProducts) / previousProducts) * 100 : 0;
-        const orderGrowth = previousOrders ? 
-            ((currentOrders - previousOrders) / previousOrders) * 100 : 0;
-
+        // Return only overall totals (no monthly growth or overview)
         return {
-            totalSales: currentSalesTotal,
+            totalSales,
             totalOrders,
             totalProducts,
-            totalCustomers,  // Add this new field
-            salesGrowth,
-            productGrowth,
-            orderGrowth,
-            salesOverview: salesOverview.map(item => ({
-                month: new Date(2024, item._id.month - 1).toLocaleString('default', { month: 'short' }),
-                amount: item.amount
-            }))
+            totalCustomers
         };
     }
 

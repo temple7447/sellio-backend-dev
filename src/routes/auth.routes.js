@@ -111,4 +111,7 @@ router.post('/seller/bank-info', auth, isSeller, authController.addBankInfo);
 router.get('/seller/bank-info', auth, isSeller, authController.getBankInfo);
 router.put('/seller/bank-info', auth, isSeller, authController.updateBankInfo);
 
+// Upload seller profile image (separate endpoint)
+router.put('/seller/profile-image', auth, isSeller, upload.single('profileImage'), authController.uploadSellerProfileImage);
+
 module.exports = router;
