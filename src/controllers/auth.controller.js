@@ -102,7 +102,7 @@ class AuthController {
             const sellers = await authService.getTopSellers(req.query.limit);
             res.json({ sellers });
         } catch (error) {
-            console.error(chalk.red('✗ Top sellers fetch failed:', error));
+            console.error(chalk.red('✗ Top sellers fetch failed:', error.message));
             res.status(error.status || 500).json({ message: error.message });
         }
     }

@@ -558,6 +558,10 @@ class AuthService {
 
     async getTopSellers(limit = 6) {
         try {
+            // Sanitize and default limit
+            const parsed = Number.parseInt(limit, 10);
+            const safeLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : 6;
+
             // Find verified and active sellers
             const sellers = await MarketUser.find({
                 role: 'seller',
@@ -565,7 +569,7 @@ class AuthService {
                 adminVerified: true
             })
             .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
-            .limit(parseInt(limit));
+            .limit(safeLimit);
 
             // Get product and rating stats for each seller
             const sellerStats = await Promise.all(sellers.map(async (seller) => {
@@ -592,9 +596,11 @@ class AuthService {
                     }
                 ]);
 
+                const businessName = seller.businessName || '';
+
                 return {
                     id: seller._id,
-                    businessName: seller.businessName,
+                    businessName,
                     businessAddress: seller.businessAddress,
                     phoneNumber: seller.phoneNumber,
                     rating: {
@@ -603,7 +609,7 @@ class AuthService {
                     },
                     totalProducts,
                     logo: seller.profileImage || null,
-                    slug: seller.businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                    slug: businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
                 };
             }));
 
