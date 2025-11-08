@@ -54,19 +54,7 @@ router.get('/my-products', auth, isSeller, productController.getSellerProducts);
 
 router.patch('/:id', auth, isSeller, productController.updateProduct);
 
-router.delete('/:id', auth, isSeller, isVerified, isAdminVerified, async (req, res) => {
-    try {
-        const result = await productService.deleteProduct(req.params.id, req.user._id);
-        res.json(result);
-    } catch (error) {
-        console.error(chalk.red('✗ Product deletion failed:', error));
-        res.status(error.status || 500).json({
-            success: false,
-            message: error.message || 'Failed to delete product',
-            error: error.details || error.message
-        });
-    }
-});
+router.delete('/:id', auth, isSeller, productController.deleteProduct);
 
 
 router.get('/:id', auth, productController.getProductById);

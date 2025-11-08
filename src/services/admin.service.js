@@ -1,6 +1,7 @@
 const { MarketUser } = require('../models/MarketUser');
 const config = require('../config/config');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const MarketProduct = require('../models/MarketProduct');
 class AdminService {
     async registerAdmin(data) {
