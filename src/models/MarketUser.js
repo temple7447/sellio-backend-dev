@@ -33,23 +33,72 @@ const userSchema = new mongoose.Schema({
     profileImage: {
         type: String,
         default: null
+    },
+    referralCode: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true,
+        uppercase: true
+    },
+    referredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'MarketUser',
+        default: null
     }
 }, {
     timestamps: true,
     discriminatorKey: 'role'
 });
 
-// Password hashing middleware
+// Helper function to generate referral code (SELLIO-XXXX format)
+const generateReferralCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `SELLIO-${code}`;
+};
+
+// Generate unique referral code before saving
 userSchema.pre('save', async function(next) {
+    // Hash password if modified
     if (this.isModified('password')) {
         this.password = await bcrypt.hash(this.password, 10);
     }
+    
+    // Generate referral code if it doesn't exist
+    if (!this.referralCode) {
+        let isUnique = false;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        while (!isUnique && attempts < maxAttempts) {
+            const newCode = generateReferralCode();
+            const existingUser = await this.constructor.findOne({ referralCode: newCode });
+            
+            if (!existingUser) {
+                this.referralCode = newCode;
+                isUnique = true;
+            }
+            attempts++;
+        }
+        
+        if (!isUnique) {
+            return next(new Error('Failed to generate unique referral code'));
+        }
+    }
+    
     next();
 });
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
+
+// Index for referral code lookups
+userSchema.index({ referralCode: 1 });
 
 const MarketUser = mongoose.model('MarketUser', userSchema);
 

@@ -114,4 +114,7 @@ router.put('/seller/bank-info', auth, isSeller, authController.updateBankInfo);
 // Upload seller profile image (separate endpoint)
 router.put('/seller/profile-image', auth, isSeller, upload.single('profileImage'), authController.uploadSellerProfileImage);
 
+// Get referral code and link (available for all authenticated users)
+router.get('/referral', auth, authController.getReferralCode);
+
 module.exports = router;

@@ -321,8 +321,11 @@ class ProductService {
             MarketProduct.countDocuments(filter)
         ]);
 
+        // Shuffle/randomize products array to avoid showing them in upload order
+        const shuffledProducts = this.shuffleArray([...products]);
+
         const response = {
-            products,
+            products: shuffledProducts,
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
@@ -782,6 +785,16 @@ class ProductService {
         if (Date.now() - product.createdAt < 1000 * 60 * 60 * 24 * 3) return 'New';
         if (product.price.discount > 25) return 'Best Deal';
         return null;
+    }
+
+    // Helper method to shuffle array (Fisher-Yates algorithm)
+    shuffleArray(array) {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
     }
 
   

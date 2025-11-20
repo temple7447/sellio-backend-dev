@@ -41,6 +41,16 @@ class AuthService {
             throw { status: 400, message: 'Email already registered' };
         }
 
+        // Handle referral code if provided
+        let referredBy = null;
+        if (data.referralCode) {
+            const referrer = await MarketUser.findOne({ referralCode: data.referralCode.toUpperCase() });
+            if (referrer && referrer._id) {
+                referredBy = referrer._id;
+            }
+            // Note: We don't throw error if referral code is invalid, just ignore it
+        }
+
         // Upload ID to Cloudinary
         let cloudinaryResult;
         try {
@@ -58,6 +68,7 @@ class AuthService {
             ...data,
             role: 'seller',
             governmentId: cloudinaryResult.secure_url,
+            referredBy: referredBy
         });
 
         // Generate and save OTP
@@ -76,10 +87,15 @@ class AuthService {
 
         await seller.save();
 
+        // Reload to get generated referral code
+        const savedSeller = await MarketUser.findById(seller._id);
+
         return {
             message: 'Registration successful. Please check your email for OTP.',
             email: seller.email,
             governmentId: cloudinaryResult.secure_url,
+            referralCode: savedSeller.referralCode,
+            referralLink: this.getReferralLink(savedSeller.referralCode),
             emailSent: {
                 success: true,
                 messageId: emailResult.messageId
@@ -105,6 +121,16 @@ class AuthService {
             throw { status: 400, message: 'Email already registered' };
         }
 
+        // Handle referral code if provided
+        let referredBy = null;
+        if (data.referralCode) {
+            const referrer = await MarketUser.findOne({ referralCode: data.referralCode.toUpperCase() });
+            if (referrer && referrer._id) {
+                referredBy = referrer._id;
+            }
+            // Note: We don't throw error if referral code is invalid, just ignore it
+        }
+
         // Handle optional profile image upload
         let profileImage = null;
         if (file) {
@@ -128,6 +154,7 @@ class AuthService {
             phoneNumber: data.phoneNumber,
             role: 'customer',
             profileImage,
+            referredBy: referredBy,
             shippingAddresses: [],
             metadata: {
                 lastLogin: null,
@@ -155,10 +182,15 @@ class AuthService {
 
         await customer.save();
 
+        // Reload to get generated referral code
+        const savedCustomer = await MarketUser.findById(customer._id);
+
         return {
             message: 'Registration successful. Please verify your email.',
             email: customer.email,
             profileImage: profileImage,
+            referralCode: savedCustomer.referralCode,
+            referralLink: this.getReferralLink(savedCustomer.referralCode),
             emailSent: {
                 success: true,
                 messageId: emailResult.messageId
@@ -190,6 +222,14 @@ class AuthService {
             { expiresIn: '24h' }
         );
 
+        // Ensure referral code exists
+        if (!user.referralCode) {
+            await user.save(); // This will trigger the pre-save hook to generate code
+            // Reload user to get the generated referral code
+            const updatedUser = await MarketUser.findById(user._id);
+            user.referralCode = updatedUser.referralCode;
+        }
+
         // Format user response based on role
         const userResponse = {
             id: user._id,
@@ -199,6 +239,8 @@ class AuthService {
             role: user.role,
             isVerified: true,
             profileImage: user.profileImage || null,
+            referralCode: user.referralCode,
+            referralLink: this.getReferralLink(user.referralCode),
             ...(user.role === 'seller' ? {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
@@ -249,6 +291,14 @@ class AuthService {
             { expiresIn: '24h' }
         );
 
+        // Ensure referral code exists
+        if (!user.referralCode) {
+            await user.save(); // This will trigger the pre-save hook to generate code
+            // Reload user to get the generated referral code
+            const updatedUser = await MarketUser.findById(user._id);
+            user.referralCode = updatedUser.referralCode;
+        }
+
         // Format response based on user role
         const userResponse = {
             email: user.email,
@@ -256,6 +306,8 @@ class AuthService {
             phoneNumber: user.phoneNumber,
             role: user.role,
             isVerified: user.isVerified,
+            referralCode: user.referralCode,
+            referralLink: this.getReferralLink(user.referralCode),
             ...(user.role === 'seller' ? {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
@@ -280,7 +332,24 @@ class AuthService {
     }
 
     async getProfile(userId) {
-        return await MarketUser.findById(userId).select('-password');
+        const user = await MarketUser.findById(userId).select('-password');
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+        
+        // Ensure referral code exists
+        if (!user.referralCode) {
+            await user.save(); // This will trigger the pre-save hook to generate code
+            // Reload user to get the generated referral code
+            const updatedUser = await MarketUser.findById(userId).select('-password');
+            user.referralCode = updatedUser.referralCode;
+        }
+        
+        const profile = user.toObject();
+        profile.referralCode = user.referralCode;
+        profile.referralLink = this.getReferralLink(user.referralCode);
+        
+        return profile;
     }
 
     async resendOTP(email) {
@@ -953,6 +1022,38 @@ class AuthService {
                 message: error.message || 'Failed to upload profile image'
             };
         }
+    }
+
+    async getReferralCode(userId) {
+        try {
+            const user = await MarketUser.findById(userId).select('referralCode');
+            if (!user) {
+                throw { status: 404, message: 'User not found' };
+            }
+
+            if (!user.referralCode) {
+                // Generate referral code if it doesn't exist (shouldn't happen, but safety check)
+                await user.save();
+            }
+
+            const referralLink = this.getReferralLink(user.referralCode);
+
+            return {
+                success: true,
+                referralCode: user.referralCode,
+                referralLink: referralLink
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to get referral code'
+            };
+        }
+    }
+
+    getReferralLink(referralCode) {
+        const baseUrl = config.FRONTEND_URL || 'http://localhost:3000';
+        return `${baseUrl}/signup?ref=${referralCode}`;
     }
 }
 
