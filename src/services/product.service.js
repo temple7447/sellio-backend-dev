@@ -235,8 +235,6 @@ class ProductService {
                 break;
         }
 
-        const skip = (page - 1) * limit;
-
         // Build filter
         const filter = { status: 'active' };
         
@@ -310,22 +308,25 @@ class ProductService {
             filter['metadata.rating.average'] = { $gte: parseFloat(minRating) };
         }
 
-        // Get products with pagination using sort options
-        const [products, total] = await Promise.all([
-            MarketProduct.find(filter)
-                .populate('category', 'name')
-                .populate('sellerId', 'businessName')
-                .skip(skip)
-                .limit(limit)
-                .sort(sortOptions),
-            MarketProduct.countDocuments(filter)
-        ]);
+        // Get ALL products matching the filter (without pagination) to shuffle across entire platform
+        const allProducts = await MarketProduct.find(filter)
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .sort(sortOptions)
+            .lean(); // Use lean() for better performance with large datasets
 
-        // Shuffle/randomize products array to avoid showing them in upload order
-        const shuffledProducts = this.shuffleArray([...products]);
+        // Get total count
+        const total = allProducts.length;
+
+        // Shuffle/randomize ALL products across the entire platform
+        const shuffledAllProducts = this.shuffleArray([...allProducts]);
+
+        // Apply pagination to the shuffled results
+        const skip = (page - 1) * limit;
+        const paginatedProducts = shuffledAllProducts.slice(skip, skip + limit);
 
         const response = {
-            products: shuffledProducts,
+            products: paginatedProducts,
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
