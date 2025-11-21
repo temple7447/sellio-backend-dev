@@ -338,7 +338,7 @@ class ProductService {
         // Log response summary
         console.log('✅ Public Products Response:', {
             timestamp: new Date().toISOString(),
-            productsCount: products.length,
+            productsCount: paginatedProducts.length,
             totalProducts: total,
             filters: { category, search, minPrice, maxPrice, brands, minRating, sort },
             pagination: response.pagination
