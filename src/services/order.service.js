@@ -333,7 +333,10 @@ class OrderService {
     }
 
     async getCustomerOrders(customerId, query = {}) {
-        const { page = 1, limit = 10, status } = query;
+        // Ensure numeric pagination values even if query params come in as strings
+        const page = parseInt(query.page, 10) || 1;
+        const limit = parseInt(query.limit, 10) || 10;
+        const { status } = query;
         const skip = (page - 1) * limit;
 
         const filter = { customerId };
@@ -346,58 +349,71 @@ class OrderService {
                     select: 'name price images'
                 })
                 .populate('items.sellerId', 'businessName')
+                .sort('-createdAt')
                 .skip(skip)
                 .limit(limit)
-                .sort('-createdAt'),
+                .lean(),
             MarketOrder.countDocuments(filter)
         ]);
 
-        // Format orders response
-        const formattedOrders = orders.map(order => ({
-            orderId: order._id,
-            orderDate: order.createdAt,
-            status: order.status,
-            items: order.items.map(item => ({
-                product: {
-                    id: item.productId._id,
-                    name: item.productId.name,
-                    image: item.productId.images[0]?.url,
-                    price: item.price
+        // Format orders response defensively so missing fields never break the API
+        const formattedOrders = (orders || []).map(order => {
+            const shipping = order.shipping || {};
+            const shippingAddress = shipping.address || {};
+            const shippingTracking = shipping.tracking || null;
+            const totals = order.totals || {};
+
+            return {
+                orderId: order._id,
+                orderDate: order.createdAt,
+                status: order.status,
+                items: (order.items || []).map(item => {
+                    const product = item.productId || {};
+                    const seller = item.sellerId || {};
+
+                    return {
+                        product: {
+                            id: product._id,
+                            name: product.name,
+                            image: Array.isArray(product.images) ? product.images[0]?.url : undefined,
+                            price: item.price
+                        },
+                        seller: {
+                            id: seller._id,
+                            name: seller.businessName
+                        },
+                        quantity: item.quantity,
+                        total: item.price * item.quantity
+                    };
+                }),
+                payment: {
+                    status: order.payment?.status,
+                    method: order.payment?.method
                 },
-                seller: {
-                    id: item.sellerId._id,
-                    name: item.sellerId.businessName
+                shipping: {
+                    address: shippingAddress,
+                    method: shipping.method,
+                    cost: shipping.cost,
+                    tracking: shippingTracking
                 },
-                quantity: item.quantity,
-                total: item.price * item.quantity
-            })),
-            payment: {
-                status: order.payment.status,
-                method: order.payment.method
-            },
-            shipping: {
-                address: order.shipping.address,
-                method: order.shipping.method,
-                cost: order.shipping.cost,
-                tracking: order.shipping.tracking || null
-            },
-            totals: {
-                subtotal: order.totals.subtotal,
-                tax: order.totals.tax,
-                escrowProtection: order.totals.escrowProtection,
-                service: order.totals.service,
-                shipping: order.totals.shipping,
-                final: order.totals.final
-            }
-        }));
+                totals: {
+                    subtotal: totals.subtotal ?? 0,
+                    tax: totals.tax ?? 0,
+                    escrowProtection: totals.escrowProtection ?? 0,
+                    service: totals.service ?? 0,
+                    shipping: totals.shipping ?? 0,
+                    final: totals.final ?? 0
+                }
+            };
+        });
 
         return {
             orders: formattedOrders,
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
-                currentPage: parseInt(page),
-                limit: parseInt(limit)
+                currentPage: page,
+                limit
             }
         };
     }

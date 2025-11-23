@@ -531,7 +531,6 @@ class ProductService {
             excludeProduct,
             sort = '-createdAt' 
         } = query;
-        const skip = (page - 1) * limit;
 
         // Check if seller exists and is verified
         const seller = await MarketUser.findOne({ 
@@ -556,27 +555,31 @@ class ProductService {
             filter._id = { $ne: excludeProduct };
         }
 
-        const [products, total] = await Promise.all([
-            MarketProduct.find(filter)
-                .populate('category', 'name')
-                .populate('sellerId', 'businessName')
-                .skip(skip)
-                .limit(limit)
-                .sort(sort),
-            MarketProduct.countDocuments(filter)
-        ]);
+        // Get all matching products first so we can shuffle across the entire seller catalog
+        const allProducts = await MarketProduct.find(filter)
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .sort(sort)
+            .lean();
+
+        const total = allProducts.length;
+
+        // Shuffle seller products globally, then apply pagination
+        const shuffledAllProducts = this.shuffleArray(allProducts);
+        const skip = (page - 1) * limit;
+        const paginatedProducts = shuffledAllProducts.slice(skip, skip + limit);
 
         return {
             seller: {
                 businessName: seller.businessName,
                 businessAddress: seller.businessAddress
             },
-            products,
+            products: paginatedProducts,
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
-                currentPage: page,
-                limit
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
             }
         };
     }
