@@ -1,0 +1,211 @@
+const { MarketUser } = require('../models/MarketUser');
+const WalletTransaction = require('../models/WalletTransaction');
+const chalk = require('chalk');
+
+class WalletService {
+    /**
+     * Get wallet balance for a user
+     */
+    async getBalance(userId) {
+        const user = await MarketUser.findById(userId);
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        return {
+            balance: user.wallet?.balance || 0,
+            currency: user.wallet?.currency || 'NGN',
+            lastTransaction: user.wallet?.lastTransaction
+        };
+    }
+
+    /**
+     * Credit wallet (add funds)
+     */
+    async credit(userId, amount, description, metadata = {}) {
+        if (amount <= 0) {
+            throw { status: 400, message: 'Amount must be greater than zero' };
+        }
+
+        const user = await MarketUser.findById(userId);
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        const balanceBefore = user.wallet?.balance || 0;
+        const balanceAfter = balanceBefore + amount;
+
+        // Update wallet
+        await MarketUser.findByIdAndUpdate(userId, {
+            'wallet.balance': balanceAfter,
+            'wallet.lastTransaction': new Date()
+        });
+
+        // Record transaction
+        const transaction = await WalletTransaction.create({
+            userId,
+            type: metadata.type || 'deposit',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            reference: metadata.reference || this.generateReference(),
+            description,
+            status: metadata.status || 'completed',
+            paymentGateway: metadata.paymentGateway || 'system',
+            relatedOrder: metadata.relatedOrder || null,
+            metadata
+        });
+
+        console.log(chalk.green(`✓ Wallet credited: ${amount} NGN for user ${userId}`));
+
+        return {
+            balanceBefore,
+            balanceAfter,
+            transaction
+        };
+    }
+
+    /**
+     * Debit wallet (deduct funds)
+     */
+    async debit(userId, amount, description, metadata = {}) {
+        if (amount <= 0) {
+            throw { status: 400, message: 'Amount must be greater than zero' };
+        }
+
+        const user = await MarketUser.findById(userId);
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        const balanceBefore = user.wallet?.balance || 0;
+
+        // Check sufficient balance
+        if (balanceBefore < amount) {
+            throw {
+                status: 400,
+                message: 'Insufficient wallet balance',
+                required: amount,
+                available: balanceBefore
+            };
+        }
+
+        const balanceAfter = balanceBefore - amount;
+
+        // Update wallet
+        await MarketUser.findByIdAndUpdate(userId, {
+            'wallet.balance': balanceAfter,
+            'wallet.lastTransaction': new Date()
+        });
+
+        // Record transaction
+        const transaction = await WalletTransaction.create({
+            userId,
+            type: metadata.type || 'payment',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            reference: metadata.reference || this.generateReference(),
+            description,
+            status: metadata.status || 'completed',
+            paymentGateway: metadata.paymentGateway || 'system',
+            relatedOrder: metadata.relatedOrder || null,
+            metadata
+        });
+
+        console.log(chalk.blue(`→ Wallet debited: ${amount} NGN from user ${userId}`));
+
+        return {
+            balanceBefore,
+            balanceAfter,
+            transaction
+        };
+    }
+
+    /**
+     * Get transaction history
+     */
+    async getTransactions(userId, query = {}) {
+        const { page = 1, limit = 20, type, status } = query;
+        const skip = (page - 1) * limit;
+
+        const filter = { userId };
+        if (type) filter.type = type;
+        if (status) filter.status = status;
+
+        const [transactions, total] = await Promise.all([
+            WalletTransaction.find(filter)
+                .sort('-createdAt')
+                .skip(skip)
+                .limit(parseInt(limit))
+                .lean(),
+            WalletTransaction.countDocuments(filter)
+        ]);
+
+        return {
+            transactions,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+    }
+
+    /**
+     * Get wallet summary statistics
+     */
+    async getWalletSummary(userId) {
+        const [balance, stats] = await Promise.all([
+            this.getBalance(userId),
+            WalletTransaction.aggregate([
+                { $match: { userId: mongoose.Types.ObjectId(userId) } },
+                {
+                    $group: {
+                        _id: '$type',
+                        totalAmount: { $sum: '$amount' },
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+        ]);
+
+        const summary = {
+            balance: balance.balance,
+            currency: balance.currency,
+            statistics: {}
+        };
+
+        stats.forEach(stat => {
+            summary.statistics[stat._id] = {
+                totalAmount: stat.totalAmount,
+                count: stat.count
+            };
+        });
+
+        return summary;
+    }
+
+    /**
+     * Generate unique transaction reference
+     */
+    generateReference() {
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substr(2, 9).toUpperCase();
+        return `WTX-${timestamp}-${random}`;
+    }
+
+    /**
+     * Verify transaction exists
+     */
+    async verifyTransaction(reference) {
+        const transaction = await WalletTransaction.findOne({ reference });
+        if (!transaction) {
+            throw { status: 404, message: 'Transaction not found' };
+        }
+        return transaction;
+    }
+}
+
+module.exports = new WalletService();

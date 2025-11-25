@@ -36,10 +36,19 @@ class OrderController {
 
     async getCustomerOrders(req, res) {
         try {
+            console.log(chalk.blue('→ Fetching customer orders for customer:'), req.user._id);
+            console.log(chalk.blue('→ Query parameters:'), req.query);
+
             const result = await orderService.getCustomerOrders(req.user._id, req.query);
+
+            console.log(chalk.green(`✓ Customer orders fetched successfully: ${result.orders.length} orders found`));
+            console.log(chalk.blue(`→ Total orders in DB: ${result.pagination.total}`));
+
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Customer orders fetch failed:', error));
+            console.error(chalk.red('→ Customer ID:'), req.user._id);
+            console.error(chalk.red('→ Error details:'), error.message);
             res.status(error.status || 500).json({ message: error.message });
         }
     }
@@ -116,21 +125,36 @@ class OrderController {
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Admin orders fetch failed:', error));
-            res.status(error.status || 500).json({ 
+            res.status(error.status || 500).json({
                 message: error.message,
-                details: error.details 
+                details: error.details
             });
         }
     }
 
     async getSellerOrders(req, res) {
         try {
+            console.log(chalk.blue('→ Fetching seller orders for seller:'), req.user._id);
+            console.log(chalk.blue('→ Query parameters:'), req.query);
+
             const result = await orderService.getSellerOrders(req.user._id, req.query);
-            console.log(chalk.green('✓ Seller orders fetched successfully'));
+
+            console.log(chalk.green(`✓ Seller orders fetched successfully: ${result.orders.length} orders found`));
+            console.log(chalk.blue(`→ Total orders in DB: ${result.pagination.total}`));
+
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Seller orders fetch failed:', error));
-            res.status(error.status || 500).json({ message: error.message });
+            console.error(chalk.red('✗ Seller orders fetch failed:'));
+            console.error(chalk.red('→ Seller ID:'), req.user._id);
+            console.error(chalk.red('→ Error message:'), error.message);
+            console.error(chalk.red('→ Error details:'), error.details);
+            if (error.stack) {
+                console.error(chalk.red('→ Stack trace:'), error.stack);
+            }
+            res.status(error.status || 500).json({
+                message: error.message,
+                details: error.details
+            });
         }
     }
 

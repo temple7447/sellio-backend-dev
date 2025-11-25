@@ -10,7 +10,7 @@ class OrderService {
     async createOrder(orderData) {
         // Validate order items and calculate totals
         const { items, shippingAddress, guestEmail } = orderData;
-        
+
         if (!guestEmail) {
             throw { status: 400, message: 'Guest email is required' };
         }
@@ -24,7 +24,7 @@ class OrderService {
         // Get product details and validate inventory
         const productIds = items.map(item => item.productId);
         const products = await MarketProduct.find({ _id: { $in: productIds }, status: 'active' });
-        
+
         let subtotal = 0;
         const processedItems = [];
 
@@ -33,11 +33,11 @@ class OrderService {
             if (!product) {
                 throw { status: 400, message: `Product ${item.productId} not found` };
             }
-            
+
             if (product.inventory.quantity < item.quantity) {
-                throw { 
-                    status: 400, 
-                    message: `Insufficient inventory for ${product.name}` 
+                throw {
+                    status: 400,
+                    message: `Insufficient inventory for ${product.name}`
                 };
             }
 
@@ -118,7 +118,7 @@ class OrderService {
             // Get product details and validate inventory
             const productIds = items.map(item => item.productId);
             const products = await MarketProduct.find({ _id: { $in: productIds }, status: 'active' });
-            
+
             let subtotal = 0;
             const processedItems = [];
 
@@ -127,11 +127,11 @@ class OrderService {
                 if (!product) {
                     throw { status: 400, message: `Product ${item.productId} not found` };
                 }
-                
+
                 if (product.inventory.quantity < item.quantity) {
-                    throw { 
-                        status: 400, 
-                        message: `Insufficient inventory for ${product.name}` 
+                    throw {
+                        status: 400,
+                        message: `Insufficient inventory for ${product.name}`
                     };
                 }
 
@@ -180,7 +180,7 @@ class OrderService {
             });
 
             await order.save();
-            
+
             // Populate order details
             return await MarketOrder.findById(order._id)
                 .populate('items.productId')
@@ -224,8 +224,8 @@ class OrderService {
                 reference: response.data.data.reference
             };
         } catch (error) {
-            throw { 
-                status: 500, 
+            throw {
+                status: 500,
                 message: 'Payment initialization failed',
                 error: error.response?.data || error.message
             };
@@ -245,9 +245,9 @@ class OrderService {
 
             // Verify with Paystack using the correct reference
             const paymentData = await paystackService.verifyTransaction(refToVerify);
-            
+
             // Extract orderId from reference
-            const orderId = refToVerify.startsWith('ORD-') ? 
+            const orderId = refToVerify.startsWith('ORD-') ?
                 refToVerify.replace('ORD-', '') : reference;
 
             const order = await MarketOrder.findById(orderId);
@@ -257,7 +257,7 @@ class OrderService {
 
             // Map PayStack status to order status
             const transactionStatus = paystackService.getTransactionStatus(paymentData.status);
-            
+
             // Update order based on payment status
             order.status = transactionStatus === 'completed' ? 'confirmed' : transactionStatus;
             order.payment.status = transactionStatus;
@@ -287,6 +287,46 @@ class OrderService {
                             }
                         }
                     );
+                }
+
+                // Calculate and credit cashback
+                // ₦1,000 cashback per product with price ≥ ₦30,000
+                try {
+                    const walletService = require('./wallet.service');
+                    const cashbackRewards = [];
+
+                    // Get product details to check prices
+                    for (const item of order.items) {
+                        const product = await MarketProduct.findById(item.productId);
+                        if (product && product.price.current >= 30000) {
+                            cashbackRewards.push({
+                                productName: product.name,
+                                productPrice: product.price.current,
+                                cashback: 1000
+                            });
+                        }
+                    }
+
+                    // Credit total cashback if any qualifying products
+                    if (cashbackRewards.length > 0 && order.customerId) {
+                        const totalCashback = cashbackRewards.length * 1000;
+                        await walletService.credit(
+                            order.customerId,
+                            totalCashback,
+                            `Cashback reward for ${cashbackRewards.length} product(s) in order ${order._id} `,
+                            {
+                                type: 'cashback',
+                                relatedOrder: order._id,
+                                metadata: {
+                                    qualifyingProducts: cashbackRewards
+                                }
+                            }
+                        );
+                        console.log(chalk.green(`✓ Cashback of ₦${totalCashback} credited to customer ${order.customerId} `));
+                    }
+                } catch (error) {
+                    console.error(chalk.yellow('⚠ Failed to credit cashback:', error.message));
+                    // Don't fail payment verification if cashback fails
                 }
             }
 
@@ -318,12 +358,12 @@ class OrderService {
     }
 
     async getOrderById(orderId, guestEmail) {
-        const order = await MarketOrder.findOne({ 
+        const order = await MarketOrder.findOne({
             _id: orderId,
-            guestEmail 
+            guestEmail
         })
-        .populate('items.productId')
-        .populate('items.sellerId', 'businessName');
+            .populate('items.productId')
+            .populate('items.sellerId', 'businessName');
 
         if (!order) {
             throw { status: 404, message: 'Order not found' };
@@ -447,12 +487,12 @@ class OrderService {
     }
 
     async getOrderStatus(customerId, orderId) {
-        const order = await MarketOrder.findOne({ 
+        const order = await MarketOrder.findOne({
             _id: orderId,
             customerId
         })
-        .populate('items.productId', 'name')
-        .select('status shipping payment items');
+            .populate('items.productId', 'name')
+            .select('status shipping payment items');
 
         if (!order) {
             throw { status: 404, message: 'Order not found' };
@@ -497,16 +537,16 @@ class OrderService {
 
     async initializeCustomerPayment(customerId, orderId) {
         try {
-            const order = await MarketOrder.findOne({ 
+            const order = await MarketOrder.findOne({
                 _id: orderId,
                 customerId,
                 'payment.status': 'pending'
             });
 
             if (!order) {
-                throw { 
-                    status: 404, 
-                    message: 'Order not found or payment already processed' 
+                throw {
+                    status: 404,
+                    message: 'Order not found or payment already processed'
                 };
             }
 
@@ -522,16 +562,16 @@ class OrderService {
                 {
                     amount: Math.round(order.totals.final * 100),
                     email: customer.email, // Use customer's email from user record
-                    reference: `ORD-${order._id}`,
+                    reference: `ORD - ${order._id} `,
                     metadata: {
                         order_id: order._id,
                         customer_id: customerId
                     },
-                    callback_url: `${config.FRONTEND_URL}/payment/verify/${order._id}`
+                    callback_url: `${config.FRONTEND_URL} /payment/verify / ${order._id} `
                 },
                 {
                     headers: {
-                        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`,
+                        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY} `,
                         'Content-Type': 'application/json'
                     }
                 }
@@ -581,9 +621,9 @@ class OrderService {
                 }
             });
 
-            throw { 
-                status: 500, 
-                message: `Payment initialization failed: ${error.response?.data?.message || error.message}`,
+            throw {
+                status: 500,
+                message: `Payment initialization failed: ${error.response?.data?.message || error.message} `,
                 details: {
                     paystackError: error.response?.data,
                     serverError: error.message
@@ -609,14 +649,15 @@ class OrderService {
                     .populate('items.productId', 'name images price')
                     .skip(skip)
                     .limit(limit)
-                    .sort(sort),
+                    .sort(sort)
+                    .lean(), // Add lean() for better performance
                 MarketOrder.countDocuments(filter)
             ]);
 
             // Format orders for seller view
             const formattedOrders = orders.map(order => {
                 // Filter items to only show seller's products
-                const sellerItems = order.items.filter(item => 
+                const sellerItems = order.items.filter(item =>
                     item.sellerId.toString() === sellerId.toString()
                 );
 
@@ -627,26 +668,31 @@ class OrderService {
                         fullName: order.customerId.fullName
                     } : {
                         email: order.guestEmail,
-                        fullName: order.shipping.address.fullName
+                        fullName: order.shipping?.address?.fullName || 'Guest'
                     },
-                    items: sellerItems.map(item => ({
-                        product: {
-                            id: item.productId._id,
-                            name: item.productId.name,
-                            image: item.productId.images[0]?.url
-                        },
-                        quantity: item.quantity,
-                        price: item.price,
-                        total: item.price * item.quantity
-                    })),
+                    items: sellerItems.map(item => {
+                        // Defensive check for productId
+                        const product = item.productId || {};
+
+                        return {
+                            product: {
+                                id: product._id || null,
+                                name: product.name || 'Product Not Found',
+                                image: Array.isArray(product.images) ? product.images[0]?.url : null
+                            },
+                            quantity: item.quantity,
+                            price: item.price,
+                            total: item.price * item.quantity
+                        };
+                    }),
                     status: order.status,
                     payment: {
-                        status: order.payment.status,
-                        method: order.payment.method
+                        status: order.payment?.status || 'unknown',
+                        method: order.payment?.method || 'unknown'
                     },
                     shipping: {
-                        address: order.shipping.address,
-                        tracking: order.shipping.tracking
+                        address: order.shipping?.address || {},
+                        tracking: order.shipping?.tracking || null
                     },
                     orderDate: order.createdAt
                 };
@@ -662,10 +708,13 @@ class OrderService {
                 }
             };
         } catch (error) {
+            // Log the actual error for debugging
+            console.error('Seller orders service error:', error);
             throw {
                 status: 500,
                 message: 'Failed to fetch seller orders',
-                error: error.message
+                details: error.message,
+                stack: error.stack
             };
         }
     }
@@ -742,19 +791,19 @@ class OrderService {
 
     async getAllOrders(query = {}) {
         try {
-            const { 
-                page = 1, 
-                limit = 10, 
-                status, 
+            const {
+                page = 1,
+                limit = 10,
+                status,
                 sort = '-createdAt',
-                search 
+                search
             } = query;
-            
+
             const skip = (page - 1) * limit;
 
             // Build filter object
             const filter = {};
-            
+
             if (status) {
                 filter.status = status;
             }
@@ -777,8 +826,8 @@ class OrderService {
                 }).select('_id');
 
                 if (customers.length > 0) {
-                    filter.$or.push({ 
-                        customerId: { $in: customers.map(c => c._id) } 
+                    filter.$or.push({
+                        customerId: { $in: customers.map(c => c._id) }
                     });
                 }
             }

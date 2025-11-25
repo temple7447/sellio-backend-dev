@@ -37,11 +37,12 @@ class AdminController {
 
     async deleteUser(req, res) {
         try {
-            const result = await adminService.deleteUser(req.params.userId);
-            console.log(chalk.green('✓ User deleted successfully'));
+            const { reason } = req.body; // Optional deletion reason
+            const result = await adminService.deleteUser(req.params.userId, reason);
+            console.log(chalk.green('✓ User soft deleted and anonymized successfully'));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ User deletion failed:', error.message));
+            console.error(chalk.red('✗ User deletion failed:', error));
             res.status(error.status || 500).json({ message: error.message });
         }
     }
@@ -60,9 +61,9 @@ class AdminController {
             });
         } catch (error) {
             console.error(chalk.red('✗ User update failed:', error));
-            res.status(error.status || 400).json({ 
+            res.status(error.status || 400).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     }

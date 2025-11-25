@@ -5,6 +5,7 @@ const { sendOTP } = require('../utils/email');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
+const chalk = require('chalk');
 
 class AuthService {
     // Helper method to generate 6-digit OTP
@@ -17,10 +18,10 @@ class AuthService {
 
     async registerSeller(data, file) {
         // Validate required fields
-        if (!data.email || !data.password || !data.fullName || 
+        if (!data.email || !data.password || !data.fullName ||
             !data.businessName || !data.phoneNumber || !data.businessAddress) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'Missing required fields',
                 required: ['email', 'password', 'fullName', 'businessName', 'phoneNumber', 'businessAddress']
             };
@@ -28,8 +29,8 @@ class AuthService {
 
         // Check if file was uploaded
         if (!file) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'Government ID file is required',
                 accepted: ['image/jpeg', 'image/png', 'image/jpg']
             };
@@ -56,10 +57,10 @@ class AuthService {
         try {
             cloudinaryResult = await uploadToCloudinary(file, 'government_ids');
         } catch (error) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'File upload failed',
-                error: error.message 
+                error: error.message
             };
         }
 
@@ -74,12 +75,12 @@ class AuthService {
         // Generate and save OTP
         const otp = this.generateOTP();
         await new MarketOTP({ email: data.email, otp, userType: 'seller' }).save();
-        
+
         // Send OTP email with enhanced response handling
         const emailResult = await sendOTP(data.email, otp);
         if (!emailResult.success) {
-            throw { 
-                status: 500, 
+            throw {
+                status: 500,
                 message: 'Failed to send OTP email',
                 error: emailResult.error
             };
@@ -108,9 +109,9 @@ class AuthService {
         const requiredFields = ['email', 'password', 'fullName', 'phoneNumber'];
         for (const field of requiredFields) {
             if (!data[field]) {
-                throw { 
-                    status: 400, 
-                    message: `Missing required field: ${field}` 
+                throw {
+                    status: 400,
+                    message: `Missing required field: ${field}`
                 };
             }
         }
@@ -138,10 +139,10 @@ class AuthService {
                 const result = await uploadToCloudinary(file, 'customer-profiles');
                 profileImage = result.secure_url;
             } catch (error) {
-                throw { 
-                    status: 400, 
+                throw {
+                    status: 400,
                     message: 'File upload failed',
-                    error: error.message 
+                    error: error.message
                 };
             }
         }
@@ -164,17 +165,17 @@ class AuthService {
 
         // Generate and save OTP
         const otp = this.generateOTP();
-        await new MarketOTP({ 
-            email: data.email, 
-            otp, 
-            userType: 'customer' 
+        await new MarketOTP({
+            email: data.email,
+            otp,
+            userType: 'customer'
         }).save();
-        
+
         // Send OTP email
         const emailResult = await sendOTP(data.email, otp);
         if (!emailResult.success) {
-            throw { 
-                status: 500, 
+            throw {
+                status: 500,
                 message: 'Failed to send OTP email',
                 error: emailResult.error
             };
@@ -200,12 +201,12 @@ class AuthService {
 
     async verifyOTP(data) {
         const { email, otp } = data;
-        const otpRecord = await MarketOTP.findOne({ 
-            email, 
+        const otpRecord = await MarketOTP.findOne({
+            email,
             otp,
             createdAt: { $gt: new Date(Date.now() - 5 * 60 * 1000) } // OTP valid for 5 minutes
         });
-        
+
         if (!otpRecord) {
             throw { status: 400, message: 'Invalid or expired OTP' };
         }
@@ -217,8 +218,8 @@ class AuthService {
 
         // Generate JWT token
         const token = jwt.sign(
-            { id: user._id, role: user.role }, 
-            config.JWT_SECRET, 
+            { id: user._id, role: user.role },
+            config.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
@@ -266,6 +267,29 @@ class AuthService {
             await user.save();
         }
 
+        // Credit referral bonus to referrer when new user verifies email
+        if (user.referredBy) {
+            try {
+                const walletService = require('./wallet.service');
+                await walletService.credit(
+                    user.referredBy,
+                    500, // ₦500 referral bonus
+                    `Referral bonus for referring ${user.email}`,
+                    {
+                        type: 'referral_bonus',
+                        metadata: {
+                            referredUserId: user._id,
+                            referredUserEmail: user.email
+                        }
+                    }
+                );
+                console.log(chalk.green(`✓ Referral bonus credited to user ${user.referredBy}`));
+            } catch (error) {
+                console.error(chalk.yellow('⚠ Failed to credit referral bonus:', error.message));
+                // Don't fail verification if bonus credit fails
+            }
+        }
+
         return {
             success: true,
             message: 'Email verified and logged in successfully',
@@ -284,10 +308,15 @@ class AuthService {
             throw { status: 401, message: 'Invalid credentials' };
         }
 
+        // Check if user is deleted
+        if (user.isDeleted) {
+            throw { status: 403, message: 'This account has been deleted' };
+        }
+
         // Generate token
         const token = jwt.sign(
-            { id: user._id, role: user.role }, 
-            config.JWT_SECRET, 
+            { id: user._id, role: user.role },
+            config.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
@@ -336,7 +365,7 @@ class AuthService {
         if (!user) {
             throw { status: 404, message: 'User not found' };
         }
-        
+
         // Ensure referral code exists
         if (!user.referralCode) {
             await user.save(); // This will trigger the pre-save hook to generate code
@@ -344,11 +373,11 @@ class AuthService {
             const updatedUser = await MarketUser.findById(userId).select('-password');
             user.referralCode = updatedUser.referralCode;
         }
-        
+
         const profile = user.toObject();
         profile.referralCode = user.referralCode;
         profile.referralLink = this.getReferralLink(user.referralCode);
-        
+
         return profile;
     }
 
@@ -364,18 +393,18 @@ class AuthService {
 
         // Generate new OTP
         const otp = this.generateOTP();
-        
+
         // Delete any existing OTP for this email
         await MarketOTP.deleteMany({ email });
-        
+
         // Save new OTP
         await new MarketOTP({ email, otp, userType: user.role }).save();
-        
+
         // Send new OTP email
         const emailResult = await sendOTP(email, otp);
         if (!emailResult.success) {
-            throw { 
-                status: 500, 
+            throw {
+                status: 500,
                 message: 'Failed to send OTP email',
                 error: emailResult.error
             };
@@ -392,8 +421,8 @@ class AuthService {
     }
 
     async getPublicSellerProfile(sellerId, requestingUserId = null) {
-        const seller = await MarketUser.findOne({ 
-            _id: sellerId, 
+        const seller = await MarketUser.findOne({
+            _id: sellerId,
             role: 'seller',
             isVerified: true,
             adminVerified: true
@@ -418,7 +447,7 @@ class AuthService {
         // Calculate average rating from products
         const ratingStats = await MarketProduct.aggregate([
             { $match: { sellerId: seller._id, status: 'active' } },
-            { 
+            {
                 $group: {
                     _id: null,
                     averageRating: { $avg: '$metadata.rating.average' },
@@ -441,7 +470,7 @@ class AuthService {
 
         // Only include bank account if requesting user is admin or the seller themselves
         const canViewBankDetails = requestingUser && (
-            requestingUser.role === 'admin' || 
+            requestingUser.role === 'admin' ||
             requestingUser._id.toString() === sellerId
         );
 
@@ -457,9 +486,9 @@ class AuthService {
     }
 
     async updateSellerProfile(sellerId, updates, imageFile) {
-        const seller = await MarketUser.findOne({ 
-            _id: sellerId, 
-            role: 'seller' 
+        const seller = await MarketUser.findOne({
+            _id: sellerId,
+            role: 'seller'
         });
 
         if (!seller) {
@@ -468,9 +497,9 @@ class AuthService {
 
         // Validate allowed updates - add bank account fields
         const allowedUpdates = [
-            'fullName', 
-            'businessName', 
-            'businessAddress', 
+            'fullName',
+            'businessName',
+            'businessAddress',
             'phoneNumber',
             'bankAccount.bankName',
             'bankAccount.accountNumber',
@@ -478,16 +507,16 @@ class AuthService {
         ];
 
         const updateKeys = Object.keys(updates);
-        
-        const isValidOperation = updateKeys.every(key => 
+
+        const isValidOperation = updateKeys.every(key =>
             allowedUpdates.includes(key) || key.startsWith('bankAccount.')
         );
 
         if (!isValidOperation) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'Invalid updates',
-                allowedUpdates 
+                allowedUpdates
             };
         }
 
@@ -539,9 +568,9 @@ class AuthService {
     }
 
     async updateAdminProfile(adminId, updates, imageFile) {
-        const admin = await MarketUser.findOne({ 
-            _id: adminId, 
-            role: 'admin' 
+        const admin = await MarketUser.findOne({
+            _id: adminId,
+            role: 'admin'
         });
 
         if (!admin) {
@@ -551,13 +580,13 @@ class AuthService {
         // Validate allowed updates
         const allowedUpdates = ['fullName', 'phoneNumber'];
         const updateKeys = Object.keys(updates);
-        
+
         const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
         if (!isValidOperation) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'Invalid updates',
-                allowedUpdates 
+                allowedUpdates
             };
         }
 
@@ -582,9 +611,9 @@ class AuthService {
     }
 
     async updateCustomerProfile(customerId, updates, imageFile) {
-        const customer = await MarketUser.findOne({ 
-            _id: customerId, 
-            role: 'customer' 
+        const customer = await MarketUser.findOne({
+            _id: customerId,
+            role: 'customer'
         });
 
         if (!customer) {
@@ -594,13 +623,13 @@ class AuthService {
         // Validate allowed updates
         const allowedUpdates = ['fullName', 'phoneNumber'];
         const updateKeys = Object.keys(updates);
-        
+
         const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
         if (!isValidOperation) {
-            throw { 
-                status: 400, 
+            throw {
+                status: 400,
                 message: 'Invalid updates',
-                allowedUpdates 
+                allowedUpdates
             };
         }
 
@@ -637,8 +666,8 @@ class AuthService {
                 isVerified: true,
                 adminVerified: true
             })
-            .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
-            .limit(safeLimit);
+                .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
+                .limit(safeLimit);
 
             // Get product and rating stats for each seller
             const sellerStats = await Promise.all(sellers.map(async (seller) => {
@@ -650,8 +679,8 @@ class AuthService {
 
                 // Calculate average rating from products
                 const ratingStats = await MarketProduct.aggregate([
-                    { 
-                        $match: { 
+                    {
+                        $match: {
                             sellerId: seller._id,
                             status: 'active'
                         }
@@ -749,8 +778,8 @@ class AuthService {
                             status: 'active'
                         }),
                         MarketProduct.aggregate([
-                            { 
-                                $match: { 
+                            {
+                                $match: {
                                     sellerId: seller._id,
                                     status: 'active'
                                 }
@@ -787,7 +816,7 @@ class AuthService {
             }));
 
             // Filter and sort valid sellers
-            const validSellers = sellersWithStats.filter(seller => 
+            const validSellers = sellersWithStats.filter(seller =>
                 seller !== null && seller.businessName && seller.businessAddress
             );
             const sortedSellers = this.sortSellers(validSellers, sort);
@@ -914,9 +943,9 @@ class AuthService {
 
     async addBankInfo(sellerId, bankData) {
         try {
-            const seller = await MarketUser.findOne({ 
-                _id: sellerId, 
-                role: 'seller' 
+            const seller = await MarketUser.findOne({
+                _id: sellerId,
+                role: 'seller'
             });
 
             if (!seller) {
@@ -927,8 +956,8 @@ class AuthService {
             const requiredFields = ['bankName', 'accountNumber', 'accountName'];
             for (const field of requiredFields) {
                 if (!bankData[field]) {
-                    throw { 
-                        status: 400, 
+                    throw {
+                        status: 400,
                         message: `Missing required field: ${field}`
                     };
                 }

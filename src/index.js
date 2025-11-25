@@ -14,6 +14,7 @@ const multer = require('multer');
 const categoryRoutes = require('./routes/category.routes');
 const testimonialRoutes = require('./routes/testimonial.routes');
 const reviewRoutes = require('./routes/review.routes');
+const walletRoutes = require('./routes/wallet.routes');
 
 
 // Configure multer for memory storage
@@ -51,7 +52,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
     res.json({
         status: 'success',
-        message: 'Welcome to CampusTrade API',
+        message: 'Welcome to Sellio Marketplace API',
         version: '1.0.0',
         documentation: '/api-docs',
         endpoints: {
@@ -59,7 +60,8 @@ app.get("/", (req, res) => {
             products: '/api/products',
             orders: '/api/orders',
             categories: '/api/categories',
-            testimonials: '/api/testimonials'
+            testimonials: '/api/testimonials',
+            wallet: '/api/wallet'
         }
     });
 });
@@ -79,11 +81,12 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/testimonials', testimonialRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
     const timestamp = new Date().toISOString();
-    
+
     console.error(chalk.red(`[${timestamp}] Error:`), {
         ip: req.ip,
         path: req.path,
@@ -101,6 +104,6 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(config.PORT, '0.0.0.0',() => {
+app.listen(config.PORT, '0.0.0.0', () => {
     console.log(chalk.blue(`✓ Server is running on port ${config.PORT}`));
 });

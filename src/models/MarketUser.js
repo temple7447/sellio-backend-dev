@@ -45,6 +45,23 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'MarketUser',
         default: null
+    },
+    isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+    deletedAt: {
+        type: Date,
+        default: null
+    },
+    anonymizedAt: {
+        type: Date,
+        default: null
+    },
+    deletionReason: {
+        type: String,
+        default: null
     }
 }, {
     timestamps: true,
@@ -62,38 +79,38 @@ const generateReferralCode = () => {
 };
 
 // Generate unique referral code before saving
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function (next) {
     // Hash password if modified
     if (this.isModified('password')) {
         this.password = await bcrypt.hash(this.password, 10);
     }
-    
+
     // Generate referral code if it doesn't exist
     if (!this.referralCode) {
         let isUnique = false;
         let attempts = 0;
         const maxAttempts = 10;
-        
+
         while (!isUnique && attempts < maxAttempts) {
             const newCode = generateReferralCode();
             const existingUser = await this.constructor.findOne({ referralCode: newCode });
-            
+
             if (!existingUser) {
                 this.referralCode = newCode;
                 isUnique = true;
             }
             attempts++;
         }
-        
+
         if (!isUnique) {
             return next(new Error('Failed to generate unique referral code'));
         }
     }
-    
+
     next();
 });
 
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -134,6 +151,21 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
             type: String,
             trim: true
         }
+    },
+    wallet: {
+        balance: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        currency: {
+            type: String,
+            default: 'NGN'
+        },
+        lastTransaction: {
+            type: Date,
+            default: null
+        }
     }
 }));
 
@@ -166,6 +198,21 @@ const MarketCustomer = MarketUser.discriminator('customer', new mongoose.Schema(
         totalOrders: {
             type: Number,
             default: 0
+        }
+    },
+    wallet: {
+        balance: {
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        currency: {
+            type: String,
+            default: 'NGN'
+        },
+        lastTransaction: {
+            type: Date,
+            default: null
         }
     }
 }));

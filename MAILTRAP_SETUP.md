@@ -10,7 +10,7 @@ Add the following variables to your `.env` file:
 # Mailtrap Configuration
 MAILTRAP_TOKEN=your_mailtrap_api_token_here
 MAILTRAP_SENDER_EMAIL=hello@demomailtrap.co
-MAILTRAP_SENDER_NAME=Market Vendor
+MAILTRAP_SENDER_NAME=Sellio Marketplace
 ```
 
 ## Getting Mailtrap Credentials

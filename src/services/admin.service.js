@@ -23,7 +23,7 @@ class AdminService {
 
         await admin.save();
         const token = jwt.sign({ id: admin._id, role: admin.role }, config.JWT_SECRET, { expiresIn: '24h' });
-        
+
         return {
             message: 'Admin registration successful',
             token,
@@ -36,7 +36,7 @@ class AdminService {
         const limit = parseInt(query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        const filter = {};
+        const filter = { isDeleted: { $ne: true } }; // Exclude deleted users
         if (query.role) filter.role = query.role;
         if (query.isVerified !== undefined) {
             filter.isVerified = query.isVerified === 'true';
@@ -107,67 +107,103 @@ class AdminService {
         };
     }
 
-    async deleteUser(userId) {
+    async deleteUser(userId, reason = 'Admin deleted') {
+        // Find the user
         const user = await MarketUser.findById(userId);
         if (!user) {
             throw { status: 404, message: 'User not found' };
         }
 
+        // Check if user is already deleted
+        if (user.isDeleted) {
+            throw { status: 400, message: 'User is already deleted' };
+        }
+
+        // Cannot delete admin users
         if (user.role === 'admin') {
             throw { status: 403, message: 'Cannot delete admin users' };
         }
 
-        await MarketUser.findByIdAndDelete(userId);
+        // Prepare anonymized data
+        const anonymizedData = {
+            email: `deleted_${userId}@anonymized.local`,
+            fullName: 'Deleted User',
+            phoneNumber: '0000000000',
+            profileImage: null,
+            isDeleted: true,
+            deletedAt: new Date(),
+            anonymizedAt: new Date(),
+            deletionReason: reason
+        };
+
+        // Role-specific anonymization
+        if (user.role === 'seller') {
+            anonymizedData.businessName = 'Deleted Business';
+            anonymizedData.businessAddress = 'Anonymized';
+            anonymizedData.governmentId = null;
+            anonymizedData['bankAccount.bankName'] = null;
+            anonymizedData['bankAccount.accountNumber'] = null;
+            anonymizedData['bankAccount.accountName'] = null;
+        } else if (user.role === 'customer') {
+            anonymizedData.shippingAddresses = [];
+        }
+
+        // Update user with anonymized data
+        await MarketUser.findByIdAndUpdate(userId, anonymizedData);
+
         return {
-            message: 'User deleted successfully',
+            message: 'User soft deleted and anonymized successfully',
             deletedUser: {
-                email: user.email,
-                role: user.role
+                id: userId,
+                originalEmail: user.email,
+                role: user.role,
+                deletedAt: anonymizedData.deletedAt,
+                reason: reason
             }
         };
     }
 
-       async adminUpdateProductStatus(productId, status) {
-            try {
-                const validStatuses = ['draft', 'active', 'inactive', 'banned'];
-                if (!validStatuses.includes(status)) {
-                    throw {
-                        status: 400,
-                        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-                    };
-                }
-    
-                const product = await MarketProduct.findById(productId)
-                    .populate('sellerId', 'businessName email');
-    
-                if (!product) {
-                    throw { status: 404, message: 'Product not found' };
-                }
-    
-                product.status = status;
-                await product.save();
-    
-                return {
-                    id: product._id,
-                    name: product.name,
-                    status: product.status,
-                    seller: {
-                        id: product.sellerId._id,
-                        businessName: product.sellerId.businessName,
-                        email: product.sellerId.email
-                    },
-                    updatedAt: product.updatedAt
-                };
-            } catch (error) {
+    async adminUpdateProductStatus(productId, status) {
+        try {
+            const validStatuses = ['draft', 'active', 'inactive', 'banned'];
+            if (!validStatuses.includes(status)) {
                 throw {
-                    status: error.status || 500,
-                    message: error.message
+                    status: 400,
+                    message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
                 };
             }
+
+            const product = await MarketProduct.findById(productId)
+                .populate('sellerId', 'businessName email');
+
+            if (!product) {
+                throw { status: 404, message: 'Product not found' };
+            }
+
+            product.status = status;
+            await product.save();
+
+            return {
+                id: product._id,
+                name: product.name,
+                status: product.status,
+                seller: {
+                    id: product.sellerId._id,
+                    businessName: product.sellerId.businessName,
+                    email: product.sellerId.email
+                },
+                updatedAt: product.updatedAt
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message
+            };
         }
+    }
 
 
-          async adminDeleteProduct(productId) {
+    async adminDeleteProduct(productId) {
         try {
             if (!mongoose.Types.ObjectId.isValid(productId)) {
                 throw {
@@ -221,145 +257,145 @@ class AdminService {
     }
 
 
-        async getAdminProducts(query) {
-            const { 
-                status, 
-                page = 1, 
-                limit = 10,
-                sellerId,
-                category,
-                search,
-                sort = '-createdAt'
-            } = query;
-            const skip = (page - 1) * limit;
-    
-            // Build filter
-            const filter = {};
-            if (status) filter.status = status;
-            if (sellerId) filter.sellerId = sellerId;
-            if (category) filter.category = category;
-            if (search) {
-                filter.$or = [
-                    { name: { $regex: search, $options: 'i' } },
-                    { description: { $regex: search, $options: 'i' } }
-                ];
-            }
-    
-            const [products, total] = await Promise.all([
-                MarketProduct.find(filter)
-                    .populate('sellerId', 'businessName email')
-                    .populate('category', 'name')
-                    .skip(skip)
-                    .limit(limit)
-                    .sort(sort),
-                MarketProduct.countDocuments(filter)
-            ]);
-    
-            return {
-                products,
-                pagination: {
-                    total,
-                    pages: Math.ceil(total / limit),
-                    currentPage: page,
-                    limit
-                }
-            };
+    async getAdminProducts(query) {
+        const {
+            status,
+            page = 1,
+            limit = 10,
+            sellerId,
+            category,
+            search,
+            sort = '-createdAt'
+        } = query;
+        const skip = (page - 1) * limit;
+
+        // Build filter
+        const filter = {};
+        if (status) filter.status = status;
+        if (sellerId) filter.sellerId = sellerId;
+        if (category) filter.category = category;
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
         }
-    
-        async getActiveAdminProducts(query) {
-            const { 
-                page = 1, 
-                limit = 10,
-                sort = '-createdAt'
-            } = query;
-            const skip = (page - 1) * limit;
-    
-            // Build filter for active products only
-            const filter = { status: 'active' };
-    
-            const [products, total] = await Promise.all([
-                MarketProduct.find(filter)
-                    .populate('sellerId', 'businessName email')
-                    .populate('category', 'name')
-                    .skip(skip)
-                    .limit(limit)
-                    .sort(sort),
-                MarketProduct.countDocuments(filter)
-            ]);
-    
-            // Format response
-            const formattedProducts = products.map(product => ({
+
+        const [products, total] = await Promise.all([
+            MarketProduct.find(filter)
+                .populate('sellerId', 'businessName email')
+                .populate('category', 'name')
+                .skip(skip)
+                .limit(limit)
+                .sort(sort),
+            MarketProduct.countDocuments(filter)
+        ]);
+
+        return {
+            products,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: page,
+                limit
+            }
+        };
+    }
+
+    async getActiveAdminProducts(query) {
+        const {
+            page = 1,
+            limit = 10,
+            sort = '-createdAt'
+        } = query;
+        const skip = (page - 1) * limit;
+
+        // Build filter for active products only
+        const filter = { status: 'active' };
+
+        const [products, total] = await Promise.all([
+            MarketProduct.find(filter)
+                .populate('sellerId', 'businessName email')
+                .populate('category', 'name')
+                .skip(skip)
+                .limit(limit)
+                .sort(sort),
+            MarketProduct.countDocuments(filter)
+        ]);
+
+        // Format response
+        const formattedProducts = products.map(product => ({
+            id: product._id,
+            name: product.name,
+            price: product.price,
+            category: product.category,
+            seller: product.sellerId,
+            inventory: product.inventory,
+            images: product.images,
+            status: product.status,
+            metadata: product.metadata,
+            createdAt: product.createdAt
+        }));
+
+        return {
+            products: formattedProducts,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+    }
+
+    async adminUpdateProduct(productId, updates) {
+        try {
+            const product = await MarketProduct.findById(productId)
+                .populate('sellerId', 'businessName email');
+
+            if (!product) {
+                throw { status: 404, message: 'Product not found' };
+            }
+
+            // Allow updating specific fields
+            const allowedUpdates = [
+                'name',
+                'description',
+                'price',
+                'status',
+                'category',
+                'inventory'
+            ];
+
+            // Filter out invalid update fields
+            Object.keys(updates).forEach(key => {
+                if (!allowedUpdates.includes(key)) {
+                    delete updates[key];
+                }
+            });
+
+            // Apply updates
+            Object.assign(product, updates);
+            await product.save();
+
+            return {
                 id: product._id,
                 name: product.name,
-                price: product.price,
-                category: product.category,
-                seller: product.sellerId,
-                inventory: product.inventory,
-                images: product.images,
-                status: product.status,
-                metadata: product.metadata,
-                createdAt: product.createdAt
-            }));
-    
-            return {
-                products: formattedProducts,
-                pagination: {
-                    total,
-                    pages: Math.ceil(total / limit),
-                    currentPage: parseInt(page),
-                    limit: parseInt(limit)
-                }
+                seller: {
+                    id: product.sellerId._id,
+                    businessName: product.sellerId.businessName,
+                    email: product.sellerId.email
+                },
+                updatedFields: Object.keys(updates),
+                updatedAt: product.updatedAt
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message
             };
         }
-    
-        async adminUpdateProduct(productId, updates) {
-            try {
-                const product = await MarketProduct.findById(productId)
-                    .populate('sellerId', 'businessName email');
-
-                if (!product) {
-                    throw { status: 404, message: 'Product not found' };
-                }
-
-                // Allow updating specific fields
-                const allowedUpdates = [
-                    'name',
-                    'description',
-                    'price',
-                    'status',
-                    'category',
-                    'inventory'
-                ];
-
-                // Filter out invalid update fields
-                Object.keys(updates).forEach(key => {
-                    if (!allowedUpdates.includes(key)) {
-                        delete updates[key];
-                    }
-                });
-
-                // Apply updates
-                Object.assign(product, updates);
-                await product.save();
-
-                return {
-                    id: product._id,
-                    name: product.name,
-                    seller: {
-                        id: product.sellerId._id,
-                        businessName: product.sellerId.businessName,
-                        email: product.sellerId.email
-                    },
-                    updatedFields: Object.keys(updates),
-                    updatedAt: product.updatedAt
-                };
-            } catch (error) {
-                throw {
-                    status: error.status || 500,
-                    message: error.message
-                };
-            }
-        }
+    }
 
     async adminUpdateUser(userId, updates) {
         try {

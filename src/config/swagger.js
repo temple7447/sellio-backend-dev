@@ -4,9 +4,9 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Market Vendor API',
+      title: 'Sellio Marketplace API',
       version: '1.0.0',
-      description: 'API documentation for Market Vendor application',
+      description: 'API documentation for Sellio Marketplace application',
     },
     servers: [
       {
