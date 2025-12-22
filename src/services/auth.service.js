@@ -1,6 +1,7 @@
 const { MarketUser, MarketSeller, MarketCustomer } = require('../models/MarketUser');
 const MarketProduct = require('../models/MarketProduct');
 const MarketOTP = require('../models/MarketOTP');
+const addressService = require('./address.service');
 const { sendOTP } = require('../utils/email');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const jwt = require('jsonwebtoken');
@@ -88,6 +89,23 @@ class AuthService {
 
         await seller.save();
 
+        // Create Wallet Record
+        const MarketWallet = require('../models/MarketWallet');
+        await MarketWallet.create({ userId: seller._id });
+        console.log(chalk.blue(`→ Initialized wallet for ${seller.email}`));
+
+        // Create Referral Record if applicable
+        if (referredBy) {
+            const MarketReferral = require('../models/MarketReferral');
+            await MarketReferral.create({
+                referrerId: referredBy,
+                referredUserId: seller._id,
+                status: 'signed_up',
+                signupDate: new Date()
+            });
+            console.log(chalk.blue(`→ Created referral record for ${seller.email}`));
+        }
+
         // Reload to get generated referral code
         const savedSeller = await MarketUser.findById(seller._id);
 
@@ -156,7 +174,6 @@ class AuthService {
             role: 'customer',
             profileImage,
             referredBy: referredBy,
-            shippingAddresses: [],
             metadata: {
                 lastLogin: null,
                 totalOrders: 0
@@ -182,6 +199,23 @@ class AuthService {
         }
 
         await customer.save();
+
+        // Create Wallet Record
+        const MarketWallet = require('../models/MarketWallet');
+        await MarketWallet.create({ userId: customer._id });
+        console.log(chalk.blue(`→ Initialized wallet for ${customer.email}`));
+
+        // Create Referral Record if applicable
+        if (referredBy) {
+            const MarketReferral = require('../models/MarketReferral');
+            await MarketReferral.create({
+                referrerId: referredBy,
+                referredUserId: customer._id,
+                status: 'signed_up',
+                signupDate: new Date()
+            });
+            console.log(chalk.blue(`→ Created referral record for ${customer.email}`));
+        }
 
         // Reload to get generated referral code
         const savedCustomer = await MarketUser.findById(customer._id);
@@ -248,7 +282,7 @@ class AuthService {
                 adminVerified: user.adminVerified || false,
                 governmentId: user.governmentId
             } : user.role === 'customer' ? {
-                shippingAddresses: user.shippingAddresses || [],
+                shippingAddresses: await addressService.getAddresses(user._id),
                 metadata: {
                     lastLogin: new Date(),
                     totalOrders: user.metadata?.totalOrders || 0
@@ -268,26 +302,68 @@ class AuthService {
         }
 
         // Credit referral bonus to referrer when new user verifies email
+        console.log(chalk.blue('→ Checking referral bonus eligibility...'));
+        console.log(chalk.blue(`→ User referredBy:`, user.referredBy));
+
         if (user.referredBy) {
+            console.log(chalk.blue(`→ User was referred! Processing referral bonus to referrer ${user.referredBy}`));
             try {
                 const walletService = require('./wallet.service');
-                await walletService.credit(
-                    user.referredBy,
-                    500, // ₦500 referral bonus
-                    `Referral bonus for referring ${user.email}`,
-                    {
-                        type: 'referral_bonus',
-                        metadata: {
-                            referredUserId: user._id,
-                            referredUserEmail: user.email
+                const RewardSettings = require('../models/RewardSettings');
+
+                // Get current reward settings
+                const settings = await RewardSettings.getSettings();
+
+                // Check if referral bonus is enabled
+                if (settings.referralBonus.enabled && settings.referralBonus.amount > 0) {
+                    const result = await walletService.credit(
+                        user.referredBy,
+                        settings.referralBonus.amount,
+                        `Referral bonus for referring ${user.email}`,
+                        {
+                            type: 'referral_bonus',
+                            metadata: {
+                                referredUserId: user._id,
+                                referredUserEmail: user.email
+                            }
                         }
-                    }
-                );
-                console.log(chalk.green(`✓ Referral bonus credited to user ${user.referredBy}`));
+                    );
+
+                    // Update MarketReferral record
+                    const MarketReferral = require('../models/MarketReferral');
+                    await MarketReferral.findOneAndUpdate(
+                        { referredUserId: user._id },
+                        {
+                            status: 'bonus_paid',
+                            bonusAmount: settings.referralBonus.amount,
+                            transactionId: result.transaction._id,
+                            completionDate: new Date()
+                        }
+                    );
+
+                    console.log(chalk.green(`✓ Referral bonus of ₦${settings.referralBonus.amount} credited to user ${user.referredBy}`));
+                    console.log(chalk.green(`✓ New balance: ${result.balanceAfter}`));
+                } else {
+                    console.log(chalk.yellow('→ Referral bonus is disabled in settings'));
+                }
             } catch (error) {
-                console.error(chalk.yellow('⚠ Failed to credit referral bonus:', error.message));
+                console.error(chalk.red('✗ Failed to credit referral bonus:'));
+                console.error(chalk.red('→ Error:', error));
+                console.error(chalk.red('→ Stack:', error.stack));
+
+                // Update MarketReferral record to failed if bonus credit failed
+                try {
+                    const MarketReferral = require('../models/MarketReferral');
+                    await MarketReferral.findOneAndUpdate(
+                        { referredUserId: user._id },
+                        { status: 'failed', metadata: { error: error.message } }
+                    );
+                } catch (e) { }
+
                 // Don't fail verification if bonus credit fails
             }
+        } else {
+            console.log(chalk.yellow('→ No referral code used during signup - skipping bonus'));
         }
 
         return {
@@ -342,7 +418,7 @@ class AuthService {
                 businessAddress: user.businessAddress,
                 adminVerified: user.adminVerified || false
             } : user.role === 'customer' ? {
-                shippingAddresses: user.shippingAddresses || []
+                shippingAddresses: await addressService.getAddresses(user._id)
             } : {
                 permissions: user.permissions || []
             })

@@ -16,12 +16,12 @@ router.patch('/profile/seller', auth, isSeller, upload.single('governmentId'), a
         const updates = { ...req.body };
         const allowedUpdates = ['businessName', 'phoneNumber', 'businessAddress', 'fullName'];
         const updateKeys = Object.keys(updates);
-        
+
         const isValidOperation = updateKeys.every(update => allowedUpdates.includes(update));
         if (!isValidOperation) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: 'Invalid updates',
-                allowedUpdates 
+                allowedUpdates
             });
         }
 
@@ -50,12 +50,12 @@ router.patch('/profile/admin', auth, isAdmin, async (req, res) => {
         const updates = { ...req.body };
         const allowedUpdates = ['fullName', 'phoneNumber'];
         const updateKeys = Object.keys(updates);
-        
+
         const isValidOperation = updateKeys.every(update => allowedUpdates.includes(update));
         if (!isValidOperation) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: 'Invalid updates',
-                allowedUpdates 
+                allowedUpdates
             });
         }
 
@@ -73,10 +73,10 @@ router.patch('/profile/admin', auth, isAdmin, async (req, res) => {
     }
 });
 
-router.put('/profile/seller/update', 
-    auth, 
-    isSeller, 
-    upload.single('profileImage'), 
+router.put('/profile/seller/update',
+    auth,
+    isSeller,
+    upload.single('profileImage'),
     authController.updateSellerProfile
 );
 
@@ -116,5 +116,10 @@ router.put('/seller/profile-image', auth, isSeller, upload.single('profileImage'
 
 // Get referral code and link (available for all authenticated users)
 router.get('/referral', auth, authController.getReferralCode);
+
+// Admin - Reward Settings Management
+router.get('/admin/reward-settings', auth, isAdmin, adminController.getRewardSettings);
+router.put('/admin/reward-settings', auth, isAdmin, adminController.updateRewardSettings);
+router.get('/admin/referrals', auth, isAdmin, adminController.getReferrals);
 
 module.exports = router;

@@ -151,21 +151,6 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
             type: String,
             trim: true
         }
-    },
-    wallet: {
-        balance: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        currency: {
-            type: String,
-            default: 'NGN'
-        },
-        lastTransaction: {
-            type: Date,
-            default: null
-        }
     }
 }));
 
@@ -183,36 +168,11 @@ const MarketAdmin = MarketUser.discriminator('admin', new mongoose.Schema({
 
 // Add Customer specific schema
 const MarketCustomer = MarketUser.discriminator('customer', new mongoose.Schema({
-    shippingAddresses: [{
-        fullName: String,
-        phoneNumber: String,
-        street: String,
-        city: String,
-        state: String,
-        country: String,
-        zipCode: String,
-        isDefault: Boolean
-    }],
     metadata: {
         lastLogin: Date,
         totalOrders: {
             type: Number,
             default: 0
-        }
-    },
-    wallet: {
-        balance: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        currency: {
-            type: String,
-            default: 'NGN'
-        },
-        lastTransaction: {
-            type: Date,
-            default: null
         }
     }
 }));

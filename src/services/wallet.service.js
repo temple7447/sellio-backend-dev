@@ -7,15 +7,19 @@ class WalletService {
      * Get wallet balance for a user
      */
     async getBalance(userId) {
-        const user = await MarketUser.findById(userId);
-        if (!user) {
-            throw { status: 404, message: 'User not found' };
+        const MarketWallet = require('../models/MarketWallet');
+        let wallet = await MarketWallet.findOne({ userId });
+
+        // If wallet doesn't exist, create it (lazy initialization)
+        if (!wallet) {
+            wallet = await MarketWallet.create({ userId });
         }
 
         return {
-            balance: user.wallet?.balance || 0,
-            currency: user.wallet?.currency || 'NGN',
-            lastTransaction: user.wallet?.lastTransaction
+            balance: wallet.balance,
+            currency: wallet.currency,
+            lastTransaction: wallet.lastTransactionAt,
+            status: wallet.status
         };
     }
 
@@ -27,19 +31,20 @@ class WalletService {
             throw { status: 400, message: 'Amount must be greater than zero' };
         }
 
-        const user = await MarketUser.findById(userId);
-        if (!user) {
-            throw { status: 404, message: 'User not found' };
-        }
+        const MarketWallet = require('../models/MarketWallet');
 
-        const balanceBefore = user.wallet?.balance || 0;
-        const balanceAfter = balanceBefore + amount;
+        // Use atomic update to avoid race conditions
+        const wallet = await MarketWallet.findOneAndUpdate(
+            { userId },
+            {
+                $inc: { balance: amount },
+                $set: { lastTransactionAt: new Date() }
+            },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
 
-        // Update wallet
-        await MarketUser.findByIdAndUpdate(userId, {
-            'wallet.balance': balanceAfter,
-            'wallet.lastTransaction': new Date()
-        });
+        const balanceAfter = wallet.balance;
+        const balanceBefore = balanceAfter - amount;
 
         // Record transaction
         const transaction = await WalletTransaction.create({
@@ -73,30 +78,40 @@ class WalletService {
             throw { status: 400, message: 'Amount must be greater than zero' };
         }
 
-        const user = await MarketUser.findById(userId);
-        if (!user) {
-            throw { status: 404, message: 'User not found' };
-        }
+        const MarketWallet = require('../models/MarketWallet');
 
-        const balanceBefore = user.wallet?.balance || 0;
-
-        // Check sufficient balance
-        if (balanceBefore < amount) {
+        // First check if user has enough balance
+        const currentWallet = await MarketWallet.findOne({ userId });
+        if (!currentWallet || currentWallet.balance < amount) {
             throw {
                 status: 400,
                 message: 'Insufficient wallet balance',
                 required: amount,
-                available: balanceBefore
+                available: currentWallet ? currentWallet.balance : 0
             };
         }
 
-        const balanceAfter = balanceBefore - amount;
+        if (currentWallet.status !== 'active') {
+            throw { status: 403, message: `Wallet is ${currentWallet.status}` };
+        }
 
-        // Update wallet
-        await MarketUser.findByIdAndUpdate(userId, {
-            'wallet.balance': balanceAfter,
-            'wallet.lastTransaction': new Date()
-        });
+        // Atomic update for debit
+        const wallet = await MarketWallet.findOneAndUpdate(
+            { userId, balance: { $gte: amount } },
+            {
+                $inc: { balance: -amount },
+                $set: { lastTransactionAt: new Date() }
+            },
+            { new: true }
+        );
+
+        if (!wallet) {
+            // Re-check for internal consistency
+            throw { status: 400, message: 'Transaction failed: insufficient funds or race condition' };
+        }
+
+        const balanceAfter = wallet.balance;
+        const balanceBefore = balanceAfter + amount;
 
         // Record transaction
         const transaction = await WalletTransaction.create({

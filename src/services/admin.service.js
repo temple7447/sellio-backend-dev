@@ -144,8 +144,6 @@ class AdminService {
             anonymizedData['bankAccount.bankName'] = null;
             anonymizedData['bankAccount.accountNumber'] = null;
             anonymizedData['bankAccount.accountName'] = null;
-        } else if (user.role === 'customer') {
-            anonymizedData.shippingAddresses = [];
         }
 
         // Update user with anonymized data
@@ -465,6 +463,118 @@ class AdminService {
                 accountNumber: bank.accountNumber || null,
                 accountName: bank.accountName || null
             } : null
+        };
+    }
+
+    // Reward Settings Management
+    async getRewardSettings() {
+        const RewardSettings = require('../models/RewardSettings');
+        const settings = await RewardSettings.getSettings();
+        return settings;
+    }
+
+    async updateRewardSettings(adminId, updates) {
+        const RewardSettings = require('../models/RewardSettings');
+
+        // Validate updates
+        const allowedUpdates = [
+            'referralBonus.enabled',
+            'referralBonus.amount',
+            'cashback.enabled',
+            'cashback.amount',
+            'cashback.minimumPurchase'
+        ];
+
+        const updateKeys = Object.keys(updates);
+        const isValidOperation = updateKeys.every(key => allowedUpdates.includes(key));
+
+        if (!isValidOperation) {
+            throw {
+                status: 400,
+                message: 'Invalid updates',
+                allowedUpdates
+            };
+        }
+
+        // Validate numeric values
+        if (updates['referralBonus.amount'] !== undefined && updates['referralBonus.amount'] < 0) {
+            throw { status: 400, message: 'Referral bonus amount must be >= 0' };
+        }
+        if (updates['cashback.amount'] !== undefined && updates['cashback.amount'] < 0) {
+            throw { status: 400, message: 'Cashback amount must be >= 0' };
+        }
+        if (updates['cashback.minimumPurchase'] !== undefined && updates['cashback.minimumPurchase'] < 0) {
+            throw { status: 400, message: 'Minimum purchase must be >= 0' };
+        }
+
+        // Get current settings
+        let settings = await RewardSettings.getSettings();
+
+        // Apply updates
+        Object.keys(updates).forEach(key => {
+            const keys = key.split('.');
+            if (keys.length === 2) {
+                settings[keys[0]][keys[1]] = updates[key];
+            }
+        });
+
+        settings.lastUpdatedBy = adminId;
+        await settings.save();
+
+        return {
+            message: 'Reward settings updated successfully',
+            settings
+        };
+    }
+
+    async getReferrals(query) {
+        const MarketReferral = require('../models/MarketReferral');
+        const page = parseInt(query.page) || 1;
+        const limit = parseInt(query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [referrals, total] = await Promise.all([
+            MarketReferral.find()
+                .populate('referrerId', 'email fullName businessName role')
+                .populate('referredUserId', 'email fullName phoneNumber createdAt')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            MarketReferral.countDocuments()
+        ]);
+
+        const formattedReferrals = referrals.map(ref => ({
+            referredUser: {
+                id: ref.referredUserId?._id,
+                email: ref.referredUserId?.email,
+                fullName: ref.referredUserId?.fullName,
+                phoneNumber: ref.referredUserId?.phoneNumber,
+                signupDate: ref.signupDate || ref.referredUserId?.createdAt
+            },
+            referrer: {
+                id: ref.referrerId?._id,
+                email: ref.referrerId?.email,
+                fullName: ref.referrerId?.fullName,
+                businessName: ref.referrerId?.businessName,
+                role: ref.referrerId?.role
+            },
+            bonus: {
+                amount: ref.bonusAmount,
+                status: ref.status === 'bonus_paid' ? 'paid' : 'pending',
+                paidAt: ref.completionDate,
+                transactionId: ref.transactionId,
+                message: ref.status === 'bonus_paid' ? 'Paid' : (ref.status === 'failed' ? 'Payout Failed' : 'Pending email verification')
+            }
+        }));
+
+        return {
+            referrals: formattedReferrals,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: page,
+                limit
+            }
         };
     }
 }

@@ -14,27 +14,8 @@ const orderSchema = new mongoose.Schema({
         trim: true
     },
 
-    items: [{
-        productId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'MarketProduct',
-            required: true
-        },
-        sellerId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'MarketUser',
-            required: true
-        },
-        quantity: {
-            type: Number,
-            required: true,
-            min: 1
-        },
-        price: {
-            type: Number,
-            required: true
-        }
-    }],
+    // We no longer store items array directly here. 
+    // Data is stored in MarketOrderItem collection for better scalability.
     status: {
         type: String,
         enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
