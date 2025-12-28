@@ -32,8 +32,8 @@ router.get('/customer/:orderId/status', auth, orderController.getOrderStatus);
 
 router.post('/customer/:orderId/pay', auth, orderController.initializeCustomerPayment);
 
-// Customer confirms they have picked up the order
-router.post('/customer/:orderId/confirm-pick', auth, orderController.confirmPickup);
+// Customer confirms they have received the order
+router.post('/customer/:orderId/confirm-receipt', auth, orderController.confirmReceipt);
 
 router.get('/seller', auth, isSeller, orderController.getSellerOrders);
 

@@ -5,6 +5,7 @@ const axios = require('axios');
 const config = require('../config/config');
 const paystackService = require('../utils/paystack');
 const mongoose = require('mongoose');  // Add this import at the top
+const chalk = require('chalk');
 
 class OrderService {
     async createOrder(orderData) {
@@ -138,7 +139,7 @@ class OrderService {
             const processedItems = [];
 
             for (const item of items) {
-                const product = products.find(p => p._id.toString() === item.productId);
+                const product = products.find(p => p._id.equals(item.productId));
                 if (!product) {
                     throw { status: 400, message: `Product ${item.productId} not found` };
                 }
@@ -210,13 +211,14 @@ class OrderService {
 
             await Promise.all(itemPromises);
 
-            // Populate order details
-            return await MarketOrder.findById(order._id)
-                .populate({
-                    path: 'items',
-                    model: 'MarketOrderItem',
-                    populate: { path: 'productId' }
-                });
+            // Fetch items manually instead of illegal populate
+            const orderDoc = await MarketOrder.findById(order._id).lean();
+            const itemsList = await MarketOrderItem.find({ orderId: order._id })
+                .populate('productId')
+                .populate('sellerId', 'businessName')
+                .lean();
+
+            return { ...orderDoc, items: itemsList };
         } catch (error) {
             console.error('Order creation error:', error);
             throw {
@@ -655,7 +657,7 @@ class OrderService {
         };
     }
 
-    async confirmPickup(customerId, orderId) {
+    async confirmReceipt(customerId, orderId) {
         const order = await MarketOrder.findOne({ _id: orderId, customerId });
         if (!order) {
             throw { status: 404, message: 'Order not found' };
@@ -666,18 +668,43 @@ class OrderService {
         if (order.status === 'delivered') {
             return { success: true, message: 'Already confirmed', data: order };
         }
+
+        const walletService = require('./wallet.service');
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const orderItems = await MarketOrderItem.find({ orderId: order._id });
+
+        // Release funds to each seller in the order
+        for (const item of orderItems) {
+            if (item.status !== 'delivered' && item.status !== 'cancelled') {
+                await walletService.credit(
+                    item.sellerId,
+                    item.totalPrice,
+                    `Payment for order item ${item._id} (Order: ${order._id})`,
+                    {
+                        type: 'earning',
+                        relatedOrder: order._id,
+                        metadata: {
+                            orderItemId: item._id,
+                            productId: item.productId,
+                            quantity: item.quantity
+                        }
+                    }
+                );
+
+                item.status = 'delivered';
+                await item.save();
+            }
+        }
+
         order.status = 'delivered';
         order.shipping.estimatedDelivery = new Date();
         await order.save();
 
-        // Update item statuses to delivered
-        const MarketOrderItem = require('../models/MarketOrderItem');
-        await MarketOrderItem.updateMany(
-            { orderId: order._id },
-            { status: 'delivered' }
-        );
-
-        return { success: true, message: 'Pickup confirmed', data: order };
+        return {
+            success: true,
+            message: 'Receipt confirmed and funds released to sellers',
+            data: order
+        };
     }
 
     async initializeCustomerPayment(customerId, orderId) {

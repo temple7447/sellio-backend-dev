@@ -96,13 +96,13 @@ class OrderController {
         }
     }
 
-    async confirmPickup(req, res) {
+    async confirmReceipt(req, res) {
         try {
-            const result = await orderService.confirmPickup(req.user._id, req.params.orderId);
-            console.log(chalk.green('✓ Pickup confirmed'));
+            const result = await orderService.confirmReceipt(req.user._id, req.params.orderId);
+            console.log(chalk.green('✓ Receipt confirmed and funds released'));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Pickup confirmation failed:', error));
+            console.error(chalk.red('✗ Receipt confirmation failed:', error));
             res.status(error.status || 400).json({ message: error.message });
         }
     }
