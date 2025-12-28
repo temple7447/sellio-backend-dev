@@ -203,6 +203,42 @@ class WalletService {
     }
 
     /**
+     * Request withdrawal
+     */
+    async requestWithdrawal(userId, amount) {
+        const RewardSettings = require('../models/RewardSettings');
+        const settings = await RewardSettings.getSettings();
+
+        // 1. Check minimum withdrawal amount
+        if (amount < settings.withdrawal.minAmount) {
+            throw {
+                status: 400,
+                message: `Minimum withdrawal amount is ₦${settings.withdrawal.minAmount}`
+            };
+        }
+
+        // 2. Check user verification status
+        const user = await MarketUser.findById(userId);
+        if (!user) throw { status: 404, message: 'User not found' };
+
+        if (user.role === 'seller' && (!user.isVerified || !user.adminVerified)) {
+            throw {
+                status: 403,
+                message: 'Only verified sellers can withdraw funds'
+            };
+        }
+
+        // 3. Process debit (using 'withdrawal' type)
+        return await this.debit(userId, amount, 'Wallet withdrawal', {
+            type: 'withdrawal',
+            metadata: {
+                requestedAt: new Date(),
+                minWithdrawalLimit: settings.withdrawal.minAmount
+            }
+        });
+    }
+
+    /**
      * Generate unique transaction reference
      */
     generateReference() {

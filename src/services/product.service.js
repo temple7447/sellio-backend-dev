@@ -12,8 +12,8 @@ class ProductService {
             const requiredFields = ['name', 'description', 'price', 'category'];
             for (const field of requiredFields) {
                 if (!productData[field]) {
-                    throw { 
-                        status: 400, 
+                    throw {
+                        status: 400,
                         message: `Missing required field: ${field}`
                     };
                 }
@@ -73,9 +73,9 @@ class ProductService {
                 if (!result || !result.secure_url) {
                     throw { status: 500, message: 'Failed to upload image' };
                 }
-                imageUrls.push({ 
-                    url: result.secure_url, 
-                    isDefault: imageUrls.length === 0 
+                imageUrls.push({
+                    url: result.secure_url,
+                    isDefault: imageUrls.length === 0
                 });
             }
 
@@ -86,15 +86,15 @@ class ProductService {
             if (mongoose.Types.ObjectId.isValid(categoryId)) {
                 category = await MarketCategory.findById(categoryId);
             } else {
-                category = await MarketCategory.findOne({ 
+                category = await MarketCategory.findOne({
                     name: { $regex: new RegExp(`^${productData.category}$`, 'i') }
                 });
             }
 
             if (!category) {
-                throw { 
-                    status: 400, 
-                    message: `Category not found: ${productData.category}` 
+                throw {
+                    status: 400,
+                    message: `Category not found: ${productData.category}`
                 };
             }
 
@@ -115,7 +115,7 @@ class ProductService {
             });
 
             const savedProduct = await product.save();
-            
+
             // Return populated product
             return await MarketProduct.findById(savedProduct._id)
                 .populate('category', 'name')
@@ -123,7 +123,7 @@ class ProductService {
 
         } catch (error) {
             console.error('Product creation error:', error);
-            
+
             // Handle duplicate key errors
             if (error.code === 11000) {
                 throw {
@@ -195,11 +195,11 @@ class ProductService {
             timestamp: new Date().toISOString(),
             parameters: query
         });
-        
-        const { 
-            page = 1, 
-            limit = 10, 
-            category, 
+
+        const {
+            page = 1,
+            limit = 10,
+            category,
             search,
             sort = 'newest',
             minPrice,
@@ -207,7 +207,7 @@ class ProductService {
             brands,
             minRating
         } = query;
-        
+
         // Handle sort options
         let sortOptions = {};
         switch (sort) {
@@ -218,9 +218,9 @@ class ProductService {
                 sortOptions = { 'price.current': -1 };
                 break;
             case 'rating':
-                sortOptions = { 
+                sortOptions = {
                     'metadata.rating.average': -1,
-                    'metadata.rating.count': -1 
+                    'metadata.rating.count': -1
                 };
                 break;
             case 'popular':
@@ -237,17 +237,17 @@ class ProductService {
 
         // Build filter
         const filter = { status: 'active' };
-        
+
         // Handle category filter
         if (category) {
             if (mongoose.Types.ObjectId.isValid(category)) {
                 filter.category = category;
             } else {
                 // Find category by name first
-                const categoryDoc = await MarketCategory.findOne({ 
+                const categoryDoc = await MarketCategory.findOne({
                     name: { $regex: new RegExp(`^${category}$`, 'i') }
                 });
-                
+
                 if (categoryDoc) {
                     filter.category = categoryDoc._id;
                 } else {
@@ -277,7 +277,7 @@ class ProductService {
             if (minPrice) filter['price.current'].$gte = parseFloat(minPrice);
             if (maxPrice) filter['price.current'].$lte = parseFloat(maxPrice);
         }
-        
+
         // Brand filter (sellers) - supports multiple brands
         if (brands) {
             const brandArray = Array.isArray(brands) ? brands : brands.split(',');
@@ -286,7 +286,7 @@ class ProductService {
                 businessName: { $in: brandArray.map(b => new RegExp(`^${b.trim()}$`, 'i')) },
                 role: 'seller'
             }).select('_id');
-            
+
             if (sellers.length > 0) {
                 filter.sellerId = { $in: sellers.map(s => s._id) };
             } else {
@@ -302,7 +302,7 @@ class ProductService {
                 };
             }
         }
-        
+
         // Rating filter
         if (minRating) {
             filter['metadata.rating.average'] = { $gte: parseFloat(minRating) };
@@ -334,7 +334,7 @@ class ProductService {
                 limit: parseInt(limit)
             }
         };
-        
+
         // Log response summary
         console.log('✅ Public Products Response:', {
             timestamp: new Date().toISOString(),
@@ -343,14 +343,14 @@ class ProductService {
             filters: { category, search, minPrice, maxPrice, brands, minRating, sort },
             pagination: response.pagination
         });
-        
+
         return response;
     }
 
 
     async updateProduct(productId, sellerId, updates) {
         const product = await MarketProduct.findOne({ _id: productId, sellerId });
-        
+
         if (!product) {
             throw { status: 404, message: 'Product not found' };
         }
@@ -449,16 +449,16 @@ class ProductService {
     async getProductById(productId) {
         // Add validation for ObjectId
         if (!mongoose.Types.ObjectId.isValid(productId)) {
-            throw { 
-                status: 400, 
-                message: 'Invalid product ID format' 
+            throw {
+                status: 400,
+                message: 'Invalid product ID format'
             };
         }
 
         const product = await MarketProduct.findById(productId)
             .populate('category', 'name')
             .populate('sellerId', 'businessName');
-            
+
         if (!product) {
             throw { status: 404, message: 'Product not found' };
         }
@@ -471,12 +471,12 @@ class ProductService {
     }
 
     async getPublicProductById(productId) {
-        const product = await MarketProduct.findOne({ 
+        const product = await MarketProduct.findOne({
             _id: productId,
             status: 'active'
         })
-        .populate('category', 'name')
-        .populate('sellerId', 'businessName');
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName');
 
         if (!product) {
             throw { status: 404, message: 'Product not found' };
@@ -501,10 +501,10 @@ class ProductService {
             category: product.category,
             status: 'active'
         })
-        .populate('category', 'name')
-        .populate('sellerId', 'businessName')
-        .limit(limit)
-        .sort('-metadata.views');  // Sort by most viewed
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .limit(limit)
+            .sort('-metadata.views');  // Sort by most viewed
 
         return relatedProducts;
     }
@@ -516,24 +516,24 @@ class ProductService {
             sellerId: sellerId,
             status: 'active'
         })
-        .populate('category', 'name')
-        .populate('sellerId', 'businessName')
-        .limit(limit)
-        .sort('-createdAt');
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName')
+            .limit(limit)
+            .sort('-createdAt');
 
         return products;
     }
 
     async getPublicSellerProducts(sellerId, query = {}) {
-        const { 
-            page = 1, 
-            limit = 12, 
+        const {
+            page = 1,
+            limit = 12,
             excludeProduct,
-            sort = '-createdAt' 
+            sort = '-createdAt'
         } = query;
 
         // Check if seller exists and is verified
-        const seller = await MarketUser.findOne({ 
+        const seller = await MarketUser.findOne({
             _id: sellerId,
             role: 'seller',
             isVerified: true,
@@ -545,7 +545,7 @@ class ProductService {
         }
 
         // Build filter
-        const filter = { 
+        const filter = {
             sellerId,
             status: 'active'
         };
@@ -599,7 +599,7 @@ class ProductService {
         // Count unique customers (registered + guests) across all time
         const uniqueCustomersAgg = await MarketOrder.aggregate([
             { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
-            { $group: { _id: { $cond: [ { $ifNull: ['$customerId', false] }, '$customerId', '$guestEmail' ] } } },
+            { $group: { _id: { $cond: [{ $ifNull: ['$customerId', false] }, '$customerId', '$guestEmail'] } } },
             { $count: 'total' }
         ]);
 
@@ -627,9 +627,9 @@ class ProductService {
                 };
             }
 
-            const product = await MarketProduct.findOne({ 
-                _id: productId, 
-                sellerId 
+            const product = await MarketProduct.findOne({
+                _id: productId,
+                sellerId
             });
 
             if (!product) {
@@ -656,18 +656,18 @@ class ProductService {
     async getPopularProducts(limit = 4) {
         try {
             // Get products sorted by rating, views and sales
-            const products = await MarketProduct.find({ 
+            const products = await MarketProduct.find({
                 status: 'active',
                 'metadata.rating.count': { $gt: 0 } // Only products with ratings
             })
-            .populate('category', 'name')
-            .populate('sellerId', 'businessName')
-            .sort({
-                'metadata.rating.average': -1, // Highest rated first
-                'metadata.sales': -1,         // Most sales second
-                'metadata.views': -1          // Most viewed third
-            })
-            .limit(limit);
+                .populate('category', 'name')
+                .populate('sellerId', 'businessName')
+                .sort({
+                    'metadata.rating.average': -1, // Highest rated first
+                    'metadata.sales': -1,         // Most sales second
+                    'metadata.views': -1          // Most viewed third
+                })
+                .limit(limit);
 
             // Format response with badges and labels
             const formattedProducts = products.map(product => ({
@@ -723,18 +723,18 @@ class ProductService {
             const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
             // Get products sorted by recent views, sales and ratings
-            const products = await MarketProduct.find({ 
+            const products = await MarketProduct.find({
                 status: 'active',
                 updatedAt: { $gte: oneWeekAgo }
             })
-            .populate('category', 'name')
-            .populate('sellerId', 'businessName')
-            .sort({
-                'metadata.views': -1,       // Most viewed first
-                'metadata.sales': -1,       // Most sales second
-                'metadata.rating.average': -1 // Highest rated third
-            })
-            .limit(limit);
+                .populate('category', 'name')
+                .populate('sellerId', 'businessName')
+                .sort({
+                    'metadata.views': -1,       // Most viewed first
+                    'metadata.sales': -1,       // Most sales second
+                    'metadata.rating.average': -1 // Highest rated third
+                })
+                .limit(limit);
 
             // Format and enrich response
             const formattedProducts = products.map(product => ({
@@ -801,9 +801,9 @@ class ProductService {
         return shuffled;
     }
 
-  
 
-  
+
+
 }
 
 module.exports = new ProductService();

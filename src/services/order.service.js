@@ -378,6 +378,62 @@ class OrderService {
                     console.error(chalk.yellow('⚠ Failed to credit cashback:', error.message));
                     // Don't fail payment verification if cashback fails
                 }
+
+                // Process referral bonus if eligible
+                try {
+                    if (order.customerId) {
+                        const customer = await MarketUser.findById(order.customerId);
+                        const RewardSettings = require('../models/RewardSettings');
+                        const settings = await RewardSettings.getSettings();
+
+                        if (customer && customer.referredBy && settings.referralBonus.enabled && settings.referralBonus.amount > 0) {
+                            const MarketReferral = require('../models/MarketReferral');
+                            const referral = await MarketReferral.findOne({
+                                referredUserId: customer._id,
+                                status: 'signed_up'
+                            });
+
+                            // Check if purchase meets minimum requirement
+                            if (referral && order.totals.subtotal >= settings.referralBonus.minPurchase) {
+                                // Check if referrer is eligible (verified if seller)
+                                const referrer = await MarketUser.findById(customer.referredBy);
+                                const isEligible = referrer && (
+                                    referrer.role !== 'seller' ||
+                                    (referrer.isVerified && referrer.adminVerified)
+                                );
+
+                                if (isEligible) {
+                                    const walletService = require('./wallet.service');
+                                    const result = await walletService.credit(
+                                        customer.referredBy,
+                                        settings.referralBonus.amount,
+                                        `Referral bonus for referring ${customer.email}`,
+                                        {
+                                            type: 'referral_bonus',
+                                            metadata: {
+                                                referredUserId: customer._id,
+                                                referredUserEmail: customer.email,
+                                                orderId: order._id
+                                            }
+                                        }
+                                    );
+
+                                    referral.status = 'bonus_paid';
+                                    referral.bonusAmount = settings.referralBonus.amount;
+                                    referral.transactionId = result.transaction._id;
+                                    referral.completionDate = new Date();
+                                    await referral.save();
+
+                                    console.log(chalk.green(`✓ Referral bonus of ₦${settings.referralBonus.amount} paid to ${referrer.email}`));
+                                } else {
+                                    console.log(chalk.yellow(`→ Referrer ${referrer?.email} is not eligible for bonus (unverified seller)`));
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(chalk.yellow('⚠ Failed to process referral bonus:', error.message));
+                }
             }
 
             return {

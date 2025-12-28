@@ -45,4 +45,11 @@ router.post('/credit', auth, isAdmin, walletController.creditWallet);
  */
 router.post('/debit', auth, isAdmin, walletController.debitWallet);
 
+/**
+ * @route   POST /api/wallet/withdraw
+ * @desc    Request a withdrawal
+ * @access  Private (All authenticated users)
+ */
+router.post('/withdraw', auth, walletController.requestWithdrawal);
+
 module.exports = router;

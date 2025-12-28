@@ -42,6 +42,15 @@ class AdminService {
             filter.isVerified = query.isVerified === 'true';
         }
 
+        if (query.search) {
+            const searchRegex = new RegExp(query.search, 'i');
+            filter.$or = [
+                { email: searchRegex },
+                { fullName: searchRegex },
+                { businessName: searchRegex }
+            ];
+        }
+
         const [users, total] = await Promise.all([
             MarketUser.find(filter)
                 .select('-password')

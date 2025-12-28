@@ -141,7 +141,7 @@ class ProductController {
         try {
             const { productId, sellerId } = req.params;
             const limit = parseInt(req.query.limit) || 4;
-            
+
             const products = await productService.getOtherProductsBySeller(
                 productId,
                 sellerId,
@@ -188,7 +188,7 @@ class ProductController {
         }
     }
 
-    
+
     async adminDeleteProduct(req, res) {
         try {
             const result = await adminService.adminDeleteProduct(req.params.id);
@@ -220,9 +220,9 @@ class ProductController {
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Admin product status update failed:', error));
-            res.status(error.status || 400).json({ 
+            res.status(error.status || 400).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     }
@@ -241,9 +241,9 @@ class ProductController {
             });
         } catch (error) {
             console.error(chalk.red('✗ Admin product update failed:', error));
-            res.status(error.status || 400).json({ 
+            res.status(error.status || 400).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     }

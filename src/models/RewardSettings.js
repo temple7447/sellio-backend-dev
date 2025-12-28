@@ -17,6 +17,20 @@ const rewardSettingsSchema = new mongoose.Schema({
             type: Number,
             default: 500,
             min: 0
+        },
+        minPurchase: {
+            type: Number,
+            default: 5000,
+            min: 0
+        }
+    },
+
+    // Withdrawal settings
+    withdrawal: {
+        minAmount: {
+            type: Number,
+            default: 2000,
+            min: 0
         }
     },
 
@@ -57,7 +71,11 @@ rewardSettingsSchema.statics.getSettings = async function () {
             _id: 'reward_settings',
             referralBonus: {
                 enabled: true,
-                amount: 500
+                amount: 500,
+                minPurchase: 5000
+            },
+            withdrawal: {
+                minAmount: 2000
             },
             cashback: {
                 enabled: true,

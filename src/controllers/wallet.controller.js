@@ -127,6 +127,30 @@ class WalletController {
             res.status(error.status || 500).json({ message: error.message });
         }
     }
+
+    /**
+     * Request withdrawal
+     * POST /api/wallet/withdraw
+     */
+    async requestWithdrawal(req, res) {
+        try {
+            const { amount } = req.body;
+            if (!amount) {
+                return res.status(400).json({ message: 'Amount is required' });
+            }
+
+            const result = await walletService.requestWithdrawal(req.user._id, amount);
+            console.log(chalk.green('✓ Withdrawal request processed successfully'));
+            res.json({
+                message: 'Withdrawal request processed successfully',
+                transaction: result.transaction,
+                newBalance: result.balanceAfter
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ Withdrawal failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new WalletController();
