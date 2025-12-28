@@ -15,6 +15,10 @@ const categoryRoutes = require('./routes/category.routes');
 const testimonialRoutes = require('./routes/testimonial.routes');
 const reviewRoutes = require('./routes/review.routes');
 const walletRoutes = require('./routes/wallet.routes');
+const cleanupService = require('./services/cleanup.service');
+
+// Start background services
+cleanupService.start();
 
 
 // Configure multer for memory storage

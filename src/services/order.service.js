@@ -466,7 +466,8 @@ class OrderService {
     async getOrderById(orderId, guestEmail) {
         const order = await MarketOrder.findOne({
             _id: orderId,
-            guestEmail
+            guestEmail,
+            'payment.status': 'completed'
         });
 
         if (!order) {
@@ -493,7 +494,7 @@ class OrderService {
         const { status } = query;
         const skip = (page - 1) * limit;
 
-        const filter = { customerId };
+        const filter = { customerId, 'payment.status': 'completed' };
         if (status) filter.status = status;
 
         const [orders, total] = await Promise.all([
@@ -582,7 +583,7 @@ class OrderService {
         const { page = 1, limit = 10, status } = query;
         const skip = (page - 1) * limit;
 
-        const filter = { guestEmail };
+        const filter = { guestEmail, 'payment.status': 'completed' };
         if (status) filter.status = status;
 
         const [orders, total] = await Promise.all([
@@ -772,6 +773,7 @@ class OrderService {
                 MarketOrderItem.find(itemFilter)
                     .populate({
                         path: 'orderId',
+                        match: { 'payment.status': 'completed' },
                         populate: { path: 'customerId', select: 'email fullName' }
                     })
                     .populate('productId', 'name images price')
@@ -783,42 +785,44 @@ class OrderService {
             ]);
 
             // Group items by order for display (while maintaining API contract)
-            const formattedOrders = sellerItems.map(item => {
-                const order = item.orderId || {};
-                const product = item.productId || {};
+            const formattedOrders = sellerItems
+                .filter(item => item.orderId) // Only include items where order payment is completed (due to match in populate)
+                .map(item => {
+                    const order = item.orderId || {};
+                    const product = item.productId || {};
 
-                return {
-                    orderId: order._id,
-                    orderDate: order.createdAt,
-                    customerDetails: order.customerId ? {
-                        email: order.customerId.email,
-                        fullName: order.customerId.fullName
-                    } : {
-                        email: order.guestEmail,
-                        fullName: order.shipping?.address?.fullName || 'Guest'
-                    },
-                    items: [{
-                        product: {
-                            id: product._id,
-                            name: product.name,
-                            image: Array.isArray(product.images) ? product.images[0]?.url : null
+                    return {
+                        orderId: order._id,
+                        orderDate: order.createdAt,
+                        customerDetails: order.customerId ? {
+                            email: order.customerId.email,
+                            fullName: order.customerId.fullName
+                        } : {
+                            email: order.guestEmail,
+                            fullName: order.shipping?.address?.fullName || 'Guest'
                         },
-                        quantity: item.quantity,
-                        price: item.price,
-                        total: item.totalPrice || (item.price * item.quantity)
-                    }],
-                    status: order.status,
-                    itemStatus: item.status,
-                    payment: {
-                        status: order.payment?.status || 'unknown',
-                        method: order.payment?.method || 'unknown'
-                    },
-                    shipping: {
-                        address: order.shipping?.address || {},
-                        tracking: order.shipping?.tracking || null
-                    }
-                };
-            });
+                        items: [{
+                            product: {
+                                id: product._id,
+                                name: product.name,
+                                image: Array.isArray(product.images) ? product.images[0]?.url : null
+                            },
+                            quantity: item.quantity,
+                            price: item.price,
+                            total: item.totalPrice || (item.price * item.quantity)
+                        }],
+                        status: order.status,
+                        itemStatus: item.status,
+                        payment: {
+                            status: order.payment?.status || 'unknown',
+                            method: order.payment?.method || 'unknown'
+                        },
+                        shipping: {
+                            address: order.shipping?.address || {},
+                            tracking: order.shipping?.tracking || null
+                        }
+                    };
+                });
 
             return {
                 orders: formattedOrders,
@@ -852,14 +856,14 @@ class OrderService {
         try {
             // Get all orders count and total customers count
             const [totalOrdersCount, totalCustomers, pendingOrders] = await Promise.all([
-                MarketOrder.countDocuments({}), // Get all orders
+                MarketOrder.countDocuments({ 'payment.status': 'completed' }), // Get all paid orders
                 MarketUser.countDocuments({ role: 'customer' }), // Get total customers
-                MarketOrder.countDocuments({ status: 'pending' }) // Get pending orders
+                MarketOrder.countDocuments({ status: 'pending', 'payment.status': 'completed' }) // Get paid pending orders
             ]);
 
             // Get overview statistics for the selected timeframe
             const overview = await MarketOrder.aggregate([
-                { $match: { createdAt: { $gte: startDate } } },
+                { $match: { createdAt: { $gte: startDate }, 'payment.status': 'completed' } },
                 {
                     $group: {
                         _id: null,
@@ -872,6 +876,7 @@ class OrderService {
 
             // Get pending orders count by status
             const orderStats = await MarketOrder.aggregate([
+                { $match: { 'payment.status': 'completed' } },
                 {
                     $group: {
                         _id: '$status',
@@ -881,7 +886,7 @@ class OrderService {
             ]);
 
             // Get recent orders
-            const recentOrders = await MarketOrder.find()
+            const recentOrders = await MarketOrder.find({ 'payment.status': 'completed' })
                 .sort('-createdAt')
                 .limit(10)
                 .select('_id customerType totals.final status createdAt');
@@ -920,7 +925,7 @@ class OrderService {
             } = query;
 
             const skip = (page - 1) * limit;
-            const filter = {};
+            const filter = { 'payment.status': 'completed' };
             if (status) filter.status = status;
 
             if (search) {
