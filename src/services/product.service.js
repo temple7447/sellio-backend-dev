@@ -243,9 +243,12 @@ class ProductService {
             if (mongoose.Types.ObjectId.isValid(category)) {
                 filter.category = category;
             } else {
-                // Find category by name first
+                // Find category by name or slug
                 const categoryDoc = await MarketCategory.findOne({
-                    name: { $regex: new RegExp(`^${category}$`, 'i') }
+                    $or: [
+                        { name: { $regex: new RegExp(`^${category}$`, 'i') } },
+                        { slug: category.toLowerCase() }
+                    ]
                 });
 
                 if (categoryDoc) {
@@ -318,12 +321,20 @@ class ProductService {
         // Get total count
         const total = allProducts.length;
 
-        // Shuffle/randomize ALL products across the entire platform
-        const shuffledAllProducts = this.shuffleArray([...allProducts]);
+        // Shuffling behavior:
+        // By default, we shuffle to provide discovery across the platform.
+        // HOWEVER, if the user explicitly requested a specific sort (e.g. price, rating, popularity),
+        // we MUST respect that sort and DISABLLE shuffling.
+        let finalProducts = [...allProducts];
+        const isDefaultSort = !query.sort || query.sort === 'newest' || query.sort === 'random';
 
-        // Apply pagination to the shuffled results
+        if (isDefaultSort) {
+            finalProducts = this.shuffleArray(finalProducts);
+        }
+
+        // Apply pagination to the results
         const skip = (page - 1) * limit;
-        const paginatedProducts = shuffledAllProducts.slice(skip, skip + limit);
+        const paginatedProducts = finalProducts.slice(skip, skip + limit);
 
         const response = {
             products: paginatedProducts,
