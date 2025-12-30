@@ -2,10 +2,10 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const MarketOrder = require('./src/models/MarketOrder');
-const MarketOrderItem = require('./src/models/MarketOrderItem');
-const MarketProduct = require('./src/models/MarketProduct');
-const { MarketUser } = require('./src/models/MarketUser');
+const MarketOrder = require('../src/models/MarketOrder');
+const MarketOrderItem = require('../src/models/MarketOrderItem');
+const MarketProduct = require('../src/models/MarketProduct');
+const { MarketUser } = require('../src/models/MarketUser');
 
 async function createTestOrders() {
     try {

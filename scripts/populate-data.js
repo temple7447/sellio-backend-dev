@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
-const { MarketUser, MarketSeller, MarketAdmin, MarketCustomer } = require('./src/models/MarketUser');
-const MarketProduct = require('./src/models/MarketProduct');
-const MarketCategory = require('./src/models/MarketCategory');
+const { MarketUser, MarketSeller, MarketAdmin, MarketCustomer } = require('../src/models/MarketUser');
+const MarketProduct = require('../src/models/MarketProduct');
+const MarketCategory = require('../src/models/MarketCategory');
 
 async function populateData() {
     try {

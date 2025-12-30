@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const walletService = require('./src/services/wallet.service');
-const { MarketUser, MarketCustomer, MarketSeller } = require('./src/models/MarketUser');
-const RewardSettings = require('./src/models/RewardSettings');
-const MarketOrder = require('./src/models/MarketOrder');
-const MarketReferral = require('./src/models/MarketReferral');
+const walletService = require('../src/services/wallet.service');
+const { MarketUser, MarketCustomer, MarketSeller } = require('../src/models/MarketUser');
+const RewardSettings = require('../src/models/RewardSettings');
+const MarketOrder = require('../src/models/MarketOrder');
+const MarketReferral = require('../src/models/MarketReferral');
 
 async function testRoleReferrals() {
     try {

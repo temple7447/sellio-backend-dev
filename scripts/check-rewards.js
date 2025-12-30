@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
-const config = require('./src/config/config');
+const config = require('../src/config/config');
 
 mongoose.connect(config.MONGODB_URI)
     .then(async () => {
         console.log('Connected to MongoDB\n');
 
-        const RewardSettings = require('./src/models/RewardSettings');
+        const RewardSettings = require('../src/models/RewardSettings');
 
         // Get current settings
         const settings = await RewardSettings.getSettings();

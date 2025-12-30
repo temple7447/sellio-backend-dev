@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
-const MarketProduct = require('./src/models/MarketProduct');
-const MarketCategory = require('./src/models/MarketCategory');
+const MarketProduct = require('../src/models/MarketProduct');
+const MarketCategory = require('../src/models/MarketCategory');
 
 async function verifyUpload() {
     try {

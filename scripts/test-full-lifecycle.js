@@ -2,14 +2,14 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const orderService = require('./src/services/order.service');
-const walletService = require('./src/services/wallet.service');
-const paystackService = require('./src/utils/paystack');
-const MarketOrder = require('./src/models/MarketOrder');
-const MarketOrderItem = require('./src/models/MarketOrderItem');
-const MarketProduct = require('./src/models/MarketProduct');
-const { MarketUser } = require('./src/models/MarketUser');
-const MarketReferral = require('./src/models/MarketReferral');
+const orderService = require('../src/services/order.service');
+const walletService = require('../src/services/wallet.service');
+const paystackService = require('../src/utils/paystack');
+const MarketOrder = require('../src/models/MarketOrder');
+const MarketOrderItem = require('../src/models/MarketOrderItem');
+const MarketProduct = require('../src/models/MarketProduct');
+const { MarketUser } = require('../src/models/MarketUser');
+const MarketReferral = require('../src/models/MarketReferral');
 
 // Monkey-patch Paystack service to mock success
 paystackService.verifyTransaction = async (reference) => {

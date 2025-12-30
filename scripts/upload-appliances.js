@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
-const { MarketUser } = require('./src/models/MarketUser');
-const MarketProduct = require('./src/models/MarketProduct');
-const MarketCategory = require('./src/models/MarketCategory');
+const { MarketUser } = require('../src/models/MarketUser');
+const MarketProduct = require('../src/models/MarketProduct');
+const MarketCategory = require('../src/models/MarketCategory');
 
 async function uploadAppliances() {
     try {

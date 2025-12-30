@@ -6,6 +6,7 @@ const config = require('../config/config');
 const paystackService = require('../utils/paystack');
 const mongoose = require('mongoose');  // Add this import at the top
 const chalk = require('chalk');
+const RewardSettings = require('../models/RewardSettings');
 
 class OrderService {
     async createOrder(orderData) {
@@ -54,10 +55,11 @@ class OrderService {
             });
         }
 
-        // Calculate totals with new fee structure
-        const tax = 250; // Fixed tax
-        const escrowProtection = subtotal * 0.025; // 2.5% of subtotal
-        const service = 50; // Fixed service fee
+        // Calculate totals with dynamic fee structure from settings
+        const settings = await RewardSettings.getSettings();
+        const tax = settings.checkoutFees?.tax || 250;
+        const escrowProtection = subtotal * (settings.checkoutFees?.escrowProtectionRate || 0.025);
+        const service = settings.checkoutFees?.serviceFee || 50;
         const final = subtotal + tax + escrowProtection + service;
 
         // Create order with guest information
@@ -163,10 +165,11 @@ class OrderService {
                 });
             }
 
-            // Calculate totals with new fee structure
-            const tax = 250; // Fixed tax
-            const escrowProtection = subtotal * 0.025; // 2.5% of subtotal
-            const service = 50; // Fixed service fee
+            // Calculate totals with dynamic fee structure from settings
+            const settings = await RewardSettings.getSettings();
+            const tax = settings.checkoutFees?.tax || 250;
+            const escrowProtection = subtotal * (settings.checkoutFees?.escrowProtectionRate || 0.025);
+            const service = settings.checkoutFees?.serviceFee || 50;
             const final = subtotal + tax + escrowProtection + service;
 
             // Create order

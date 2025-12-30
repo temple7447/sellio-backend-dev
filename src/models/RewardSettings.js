@@ -52,6 +52,26 @@ const rewardSettingsSchema = new mongoose.Schema({
         }
     },
 
+    // Checkout fee settings
+    checkoutFees: {
+        tax: {
+            type: Number,
+            default: 250,
+            min: 0
+        },
+        escrowProtectionRate: {
+            type: Number,
+            default: 0.025, // 2.5%
+            min: 0,
+            max: 1
+        },
+        serviceFee: {
+            type: Number,
+            default: 50,
+            min: 0
+        }
+    },
+
     // Metadata
     lastUpdatedBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -81,6 +101,11 @@ rewardSettingsSchema.statics.getSettings = async function () {
                 enabled: true,
                 amount: 1000,
                 minimumPurchase: 30000
+            },
+            checkoutFees: {
+                tax: 250,
+                escrowProtectionRate: 0.025,
+                serviceFee: 50
             }
         });
     }

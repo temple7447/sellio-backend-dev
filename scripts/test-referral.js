@@ -2,13 +2,13 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const authService = require('./src/services/auth.service');
-const walletService = require('./src/services/wallet.service');
-const { MarketUser } = require('./src/models/MarketUser');
-const MarketOTP = require('./src/models/MarketOTP');
-const MarketWallet = require('./src/models/MarketWallet');
-const MarketReferral = require('./src/models/MarketReferral');
-const RewardSettings = require('./src/models/RewardSettings');
+const authService = require('../src/services/auth.service');
+const walletService = require('../src/services/wallet.service');
+const { MarketUser } = require('../src/models/MarketUser');
+const MarketOTP = require('../src/models/MarketOTP');
+const MarketWallet = require('../src/models/MarketWallet');
+const MarketReferral = require('../src/models/MarketReferral');
+const RewardSettings = require('../src/models/RewardSettings');
 
 async function testReferral() {
     try {
@@ -24,7 +24,7 @@ async function testReferral() {
         if (!referrer) {
             console.log(chalk.yellow('Referrer not found, creating one...'));
             // Create a referrer manually to avoid email sends in this step
-            const { MarketCustomer } = require('./src/models/MarketUser');
+            const { MarketCustomer } = require('../src/models/MarketUser');
             referrer = new MarketCustomer({
                 email: referrerEmail,
                 password: 'password123',

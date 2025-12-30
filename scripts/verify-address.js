@@ -1,7 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { MarketUser } = require('./src/models/MarketUser');
-const addressService = require('./src/services/address.service');
+const { MarketUser } = require('../src/models/MarketUser');
+const addressService = require('../src/services/address.service');
 const chalk = require('chalk');
 
 async function verifyAddressRefactor() {

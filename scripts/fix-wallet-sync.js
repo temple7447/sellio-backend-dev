@@ -1,12 +1,12 @@
 const mongoose = require('mongoose');
-const config = require('./src/config/config');
+const config = require('../src/config/config');
 
 mongoose.connect(config.MONGODB_URI)
     .then(async () => {
         console.log('Connected to MongoDB\n');
 
-        const { MarketUser } = require('./src/models/MarketUser');
-        const WalletTransaction = require('./src/models/WalletTransaction');
+        const { MarketUser } = require('../src/models/MarketUser');
+        const WalletTransaction = require('../src/models/WalletTransaction');
 
         const userId = '68a24631e001213ad86881c5';
 

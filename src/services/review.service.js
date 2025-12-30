@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const MarketOrder = require('../models/MarketOrder');
 const MarketProduct = require('../models/MarketProduct');
 const MarketReview = require('../models/MarketReview');
+const MarketOrderItem = require('../models/MarketOrderItem');
 
 class ReviewService {
   async createCustomerReview(customerId, { orderId, productId, rating, comment }) {
@@ -22,10 +23,17 @@ class ReviewService {
       throw { status: 400, message: 'You can review only after confirming pickup (delivered)' };
     }
 
+    // Fetch items from MarketOrderItem since they are not stored on the order directly
+    const orderItems = await MarketOrderItem.find({ orderId });
+
+    if (!orderItems || orderItems.length === 0) {
+      throw { status: 400, message: 'No items found for this order' };
+    }
+
     // Determine productId if not provided
     let effectiveProductId = productId;
     if (!effectiveProductId) {
-      const uniqueProductIds = Array.from(new Set(order.items.map(i => String(i.productId))));
+      const uniqueProductIds = Array.from(new Set(orderItems.map(i => String(i.productId))));
       if (uniqueProductIds.length === 1) {
         effectiveProductId = uniqueProductIds[0];
       } else {
@@ -34,30 +42,37 @@ class ReviewService {
     }
 
     // Ensure product exists in order
-    const hasItem = order.items.some(i => String(i.productId) === String(effectiveProductId));
+    const hasItem = orderItems.some(i => String(i.productId) === String(effectiveProductId));
     if (!hasItem) {
       throw { status: 400, message: 'This product was not part of the order' };
     }
 
     // Create review (unique index prevents duplicates)
-    const review = new MarketReview({ productId: effectiveProductId, customerId, orderId, rating, comment });
-    await review.save();
+    try {
+      const review = new MarketReview({ productId: effectiveProductId, customerId, orderId, rating, comment });
+      await review.save();
 
-    // Update product aggregate rating
-    const product = await MarketProduct.findById(effectiveProductId);
-    if (product) {
-      const currentAvg = product.metadata?.rating?.average || 0;
-      const currentCount = product.metadata?.rating?.count || 0;
-      const newCount = currentCount + 1;
-      const newAvg = ((currentAvg * currentCount) + rating) / newCount;
-      if (!product.metadata) product.metadata = {};
-      if (!product.metadata.rating) product.metadata.rating = { average: 0, count: 0 };
-      product.metadata.rating.average = Number(newAvg.toFixed(2));
-      product.metadata.rating.count = newCount;
-      await product.save();
+      // Update product aggregate rating
+      const product = await MarketProduct.findById(effectiveProductId);
+      if (product) {
+        const currentAvg = product.metadata?.rating?.average || 0;
+        const currentCount = product.metadata?.rating?.count || 0;
+        const newCount = currentCount + 1;
+        const newAvg = ((currentAvg * currentCount) + rating) / newCount;
+        if (!product.metadata) product.metadata = {};
+        if (!product.metadata.rating) product.metadata.rating = { average: 0, count: 0 };
+        product.metadata.rating.average = Number(newAvg.toFixed(2));
+        product.metadata.rating.count = newCount;
+        await product.save();
+      }
+
+      return { success: true, message: 'Review submitted', data: review };
+    } catch (error) {
+      if (error.code === 11000) {
+        throw { status: 400, message: 'You have already reviewed this product for this order' };
+      }
+      throw error;
     }
-
-    return { success: true, message: 'Review submitted', data: review };
   }
 
   async listVendorReviews(sellerId, { page = 1, limit = 20, minRating } = {}) {
@@ -75,7 +90,8 @@ class ReviewService {
       { $unwind: '$product' },
       { $match: { 'product.sellerId': sellerObjectId, ...(minRating ? { rating: { $gte: Number(minRating) } } : {}) } },
       { $sort: { createdAt: -1 } },
-      { $project: {
+      {
+        $project: {
           _id: 1,
           productId: 1,
           customerId: 1,
@@ -86,9 +102,10 @@ class ReviewService {
           product: { _id: '$product._id', name: '$product.name', images: '$product.images' }
         }
       },
-      { $facet: {
-          data: [ { $skip: skip }, { $limit: nLimit } ],
-          meta: [ { $group: { _id: null, count: { $sum: 1 }, avgRating: { $avg: '$rating' } } } ]
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: nLimit }],
+          meta: [{ $group: { _id: null, count: { $sum: 1 }, avgRating: { $avg: '$rating' } } }]
         }
       }
     ];

@@ -1,13 +1,13 @@
 const mongoose = require('mongoose');
-const config = require('./src/config/config');
+const config = require('../src/config/config');
 
 mongoose.connect(config.MONGODB_URI)
     .then(async () => {
         console.log('Connected to MongoDB');
 
         // Check recent wallet transactions
-        const WalletTransaction = require('./src/models/WalletTransaction');
-        const { MarketUser } = require('./src/models/MarketUser');
+        const WalletTransaction = require('../src/models/WalletTransaction');
+        const { MarketUser } = require('../src/models/MarketUser');
 
         console.log('\n=== Recent Wallet Transactions ===');
         const transactions = await WalletTransaction.find()

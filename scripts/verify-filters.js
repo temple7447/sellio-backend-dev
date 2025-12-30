@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
-const productService = require('./src/services/product.service');
+const productService = require('../src/services/product.service');
 
 async function verifyFilters() {
     try {

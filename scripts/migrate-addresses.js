@@ -1,8 +1,8 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { MarketUser, MarketCustomer } = require('./src/models/MarketUser');
-const MarketAddress = require('./src/models/MarketAddress');
-const config = require('./src/config/config');
+const { MarketUser, MarketCustomer } = require('../src/models/MarketUser');
+const MarketAddress = require('../src/models/MarketAddress');
+const config = require('../src/config/config');
 
 async function migrateAddresses() {
     try {

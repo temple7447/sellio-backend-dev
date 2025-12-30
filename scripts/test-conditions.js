@@ -2,12 +2,12 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const walletService = require('./src/services/wallet.service');
-const orderService = require('./src/services/order.service');
-const { MarketUser, MarketCustomer, MarketSeller } = require('./src/models/MarketUser');
-const RewardSettings = require('./src/models/RewardSettings');
-const MarketOrder = require('./src/models/MarketOrder');
-const MarketReferral = require('./src/models/MarketReferral');
+const walletService = require('../src/services/wallet.service');
+const orderService = require('../src/services/order.service');
+const { MarketUser, MarketCustomer, MarketSeller } = require('../src/models/MarketUser');
+const RewardSettings = require('../src/models/RewardSettings');
+const MarketOrder = require('../src/models/MarketOrder');
+const MarketReferral = require('../src/models/MarketReferral');
 
 async function testConditions() {
     try {
@@ -47,7 +47,7 @@ async function testConditions() {
         await unverifiedSeller.save();
 
         // Give them some money
-        const MarketWallet = require('./src/models/MarketWallet');
+        const MarketWallet = require('../src/models/MarketWallet');
         await MarketWallet.create({ userId: unverifiedSeller._id, balance: 5000 });
 
         try {

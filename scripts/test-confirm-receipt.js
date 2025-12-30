@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 const chalk = require('chalk');
 require('dotenv').config();
 
-const orderService = require('./src/services/order.service');
-const walletService = require('./src/services/wallet.service');
-const MarketOrder = require('./src/models/MarketOrder');
-const MarketOrderItem = require('./src/models/MarketOrderItem');
-const { MarketUser } = require('./src/models/MarketUser');
+const orderService = require('../src/services/order.service');
+const walletService = require('../src/services/wallet.service');
+const MarketOrder = require('../src/models/MarketOrder');
+const MarketOrderItem = require('../src/models/MarketOrderItem');
+const { MarketUser } = require('../src/models/MarketUser');
 
 async function testConfirmReceipt() {
     try {
