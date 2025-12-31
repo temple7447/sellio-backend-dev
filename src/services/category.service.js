@@ -57,7 +57,7 @@ class CategoryService {
         try {
             // Drop existing indices to prevent duplicate key errors
             await MarketCategory.collection.dropIndexes();
-            
+
             // Create new indices
             await MarketCategory.collection.createIndex({ name: 1 }, { unique: true });
             await MarketCategory.collection.createIndex({ slug: 1 }, { unique: true });
@@ -65,10 +65,10 @@ class CategoryService {
             // Process each category
             for (const category of defaultCategories) {
                 const slug = MarketCategory.generateSlug(category.name);
-                
+
                 // Try to find existing category
-                const existingCategory = await MarketCategory.findOne({ 
-                    $or: [{ name: category.name }, { slug }] 
+                const existingCategory = await MarketCategory.findOne({
+                    $or: [{ name: category.name }, { slug }]
                 });
 
                 if (!existingCategory) {
@@ -79,7 +79,7 @@ class CategoryService {
                     });
                 }
             }
-            
+
             console.log(chalk.green('✓ Categories seeded successfully'));
         } catch (error) {
             if (error.code === 11000) {
@@ -100,6 +100,10 @@ class CategoryService {
             if (isActive !== undefined) {
                 filter.isActive = isActive === 'true';
             }
+
+            // Filter out categories without active products
+            const activeCategoryIds = await MarketProduct.distinct('category', { status: 'active' });
+            filter._id = { $in: activeCategoryIds };
 
             // Get categories with pagination
             const [categories, total] = await Promise.all([
@@ -269,14 +273,14 @@ class CategoryService {
             const { name } = categoryData;
 
             // Check for existing category
-            const existingCategory = await MarketCategory.findOne({ 
+            const existingCategory = await MarketCategory.findOne({
                 name: { $regex: new RegExp(`^${name}$`, 'i') }
             });
 
             if (existingCategory) {
-                throw { 
-                    status: 400, 
-                    message: 'Category with this name already exists' 
+                throw {
+                    status: 400,
+                    message: 'Category with this name already exists'
                 };
             }
 

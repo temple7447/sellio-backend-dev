@@ -240,7 +240,7 @@ class ProductService {
 
         // Handle category filter
         if (category) {
-            if (mongoose.Types.ObjectId.isValid(category)) {
+            if (mongoose.Types.ObjectId.isValid(category) && /^[0-9a-fA-F]{24}$/.test(category)) {
                 filter.category = category;
             } else {
                 // Find category by name or slug
@@ -250,7 +250,6 @@ class ProductService {
                         { slug: category.toLowerCase() }
                     ]
                 });
-
                 if (categoryDoc) {
                     filter.category = categoryDoc._id;
                 } else {
