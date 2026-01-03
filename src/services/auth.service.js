@@ -995,7 +995,7 @@ class AuthService {
             }
 
             // Validate required fields
-            const requiredFields = ['bankName', 'accountNumber', 'accountName'];
+            const requiredFields = ['bankName', 'accountNumber', 'accountName', 'bankCode'];
             for (const field of requiredFields) {
                 if (!bankData[field]) {
                     throw {
@@ -1016,8 +1016,10 @@ class AuthService {
             // Update bank information
             seller.bankAccount = {
                 bankName: bankData.bankName,
+                bankCode: bankData.bankCode,
                 accountNumber: bankData.accountNumber,
-                accountName: bankData.accountName
+                accountName: bankData.accountName,
+                recipientCode: null // Reset recipient code when bank info changes
             };
 
             await seller.save();
@@ -1027,6 +1029,7 @@ class AuthService {
                 message: 'Bank information added successfully',
                 data: {
                     bankName: seller.bankAccount.bankName,
+                    bankCode: seller.bankAccount.bankCode,
                     accountNumber: seller.bankAccount.accountNumber,
                     accountName: seller.bankAccount.accountName
                 }

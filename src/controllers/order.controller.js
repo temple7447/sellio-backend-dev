@@ -1,4 +1,5 @@
 const orderService = require('../services/order.service');
+const { uploadToCloudinary } = require('../utils/cloudinary');
 const chalk = require('chalk');
 
 class OrderController {
@@ -98,12 +99,46 @@ class OrderController {
 
     async confirmReceipt(req, res) {
         try {
-            const result = await orderService.confirmReceipt(req.user._id, req.params.orderId);
-            console.log(chalk.green('✓ Receipt confirmed and funds released'));
+            let { itemProofs, itemIds } = req.body;
+
+            // If a file is uploaded, use it for all items being confirmed
+            if (req.file) {
+                console.log(chalk.blue('→ Uploading buyer receipt proof to Cloudinary...'));
+                const uploadResult = await uploadToCloudinary(req.file, 'buyer_proofs');
+                const proofUrl = uploadResult.secure_url;
+
+                // Ensure itemIds is an array
+                let ids = [];
+                if (itemIds) {
+                    ids = Array.isArray(itemIds) ? itemIds : itemIds.split(',').map(id => id.trim());
+                } else if (itemProofs && typeof itemProofs === 'object') {
+                    ids = Object.keys(itemProofs);
+                }
+
+                if (ids.length > 0) {
+                    itemProofs = {};
+                    ids.forEach(id => {
+                        itemProofs[id] = proofUrl;
+                    });
+                } else {
+                    // Smart detection: if no IDs specified but we have a file, 
+                    // and the URL contains an ID, we'll let the service decide 
+                    // if that URL ID is an item ID to apply the proof to.
+                    // For now, let's pass a special flag or just the proof.
+                    itemProofs = { __single_proof: proofUrl };
+                }
+            }
+
+            const result = await orderService.confirmReceipt(req.user._id, req.params.orderId, itemProofs);
+            console.log(chalk.green('✓ Receipt confirmation processed'));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Receipt confirmation failed:', error));
-            res.status(error.status || 400).json({ message: error.message });
+            console.error(chalk.red('✗ Receipt confirmation failed:'), error);
+            res.status(error.status || 400).json({
+                success: false,
+                message: error.message || 'Receipt confirmation failed',
+                details: error
+            });
         }
     }
 
@@ -169,6 +204,51 @@ class OrderController {
                 message: error.message || 'Failed to fetch dashboard statistics',
                 error: error.details || undefined
             });
+        }
+    }
+    async uploadFulfillmentProof(req, res) {
+        try {
+            const { orderItemId } = req.params;
+            let { proofUrl } = req.body;
+            const sellerId = req.user._id;
+
+            // If a file is uploaded, use it as the fulfillment proof
+            if (req.file) {
+                console.log(chalk.blue('→ Uploading seller fulfillment proof to Cloudinary...'));
+                const uploadResult = await uploadToCloudinary(req.file, 'fulfillment_proofs');
+                proofUrl = uploadResult.secure_url;
+            }
+
+            if (!proofUrl) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Fulfillment proof (file or URL) is required'
+                });
+            }
+
+            const item = await orderService.uploadFulfillmentProof(sellerId, orderItemId, proofUrl);
+
+            res.status(200).json({
+                success: true,
+                message: 'Fulfillment proof uploaded successfully. Item status updated to shipped.',
+                data: item
+            });
+        } catch (error) {
+            console.error('Upload fulfillment proof error:', error);
+            res.status(error.status || 500).json({
+                success: false,
+                message: error.message || 'Failed to upload fulfillment proof'
+            });
+        }
+    }
+
+    async getOrderDetail(req, res) {
+        try {
+            const result = await orderService.getOrderDetail(req.params.orderId, req.user);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Order detail fetch failed:'), error);
+            res.status(error.status || 500).json({ message: error.message });
         }
     }
 }

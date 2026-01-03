@@ -32,6 +32,20 @@ router.get('/summary', auth, walletController.getSummary);
 router.get('/transaction/:reference', auth, walletController.verifyTransaction);
 
 /**
+ * @route   GET /api/wallet/banks
+ * @desc    Get list of supported banks
+ * @access  Private
+ */
+router.get('/banks', auth, walletController.getBanks);
+
+/**
+ * @route   POST /api/wallet/verify-account
+ * @desc    Verify bank account details
+ * @access  Private
+ */
+router.post('/verify-account', auth, walletController.verifyAccount);
+
+/**
  * @route   POST /api/wallet/credit
  * @desc    Credit a user's wallet (Admin only)
  * @access  Private (Admin)

@@ -239,11 +239,25 @@ class OrderService {
 
         // Initialize Paystack transaction
         try {
+            let email = order.shipping?.address?.email || order.guestEmail;
+
+            if (!email && order.customerId) {
+                const { MarketUser } = require('../models/MarketUser');
+                const user = await MarketUser.findById(order.customerId);
+                if (user) {
+                    email = user.email;
+                }
+            }
+
+            if (!email) {
+                throw { status: 400, message: 'Buyer email is required for payment' };
+            }
+
             const response = await axios.post(
                 'https://api.paystack.co/transaction/initialize',
                 {
                     amount: Math.round(order.totals.final * 100), // Convert to kobo
-                    email: order.shipping.address.email || order.guestEmail,
+                    email,
                     reference: `ORD-${order._id}`,
                     callback_url: `${config.FRONTEND_URL}/payment/verify/${order._id}`
                 },
@@ -315,7 +329,7 @@ class OrderService {
             // Update inventory only if payment was successful
             if (transactionStatus === 'completed') {
                 const MarketOrderItem = require('../models/MarketOrderItem');
-                const orderItems = await MarketOrderItem.find({ orderId: order._id });
+                const orderItems = await MarketOrderItem.find({ orderId: order._id }).populate('productId');
 
                 for (const item of orderItems) {
                     await MarketProduct.findByIdAndUpdate(
@@ -330,6 +344,30 @@ class OrderService {
                     // Update item status to confirmed
                     item.status = 'confirmed';
                     await item.save();
+                }
+
+                // Send receipt email to buyer
+                try {
+                    const { sendOrderReceiptEmail } = require('../utils/email');
+
+                    // Robustly determine recipient email
+                    let recipientEmail = order.shipping?.address?.email || order.guestEmail;
+
+                    if (!recipientEmail && order.customerId) {
+                        const { MarketUser } = require('../models/MarketUser');
+                        const user = await MarketUser.findById(order.customerId);
+                        if (user) {
+                            recipientEmail = user.email;
+                        }
+                    }
+
+                    if (recipientEmail) {
+                        await sendOrderReceiptEmail(recipientEmail, order, orderItems);
+                    } else {
+                        console.warn(chalk.yellow('⚠ Could not find recipient email for order receipt:', order._id));
+                    }
+                } catch (error) {
+                    console.error(chalk.yellow('⚠ Failed to send order receipt email:', error.message));
                 }
 
                 // Calculate and credit cashback based on configurable settings
@@ -486,6 +524,46 @@ class OrderService {
             .populate('sellerId', 'businessName');
 
         // Cast to object and attach items
+        const orderObj = order.toObject();
+        orderObj.items = items;
+
+        return orderObj;
+    }
+
+    async getOrderDetail(orderId, user) {
+        const order = await MarketOrder.findById(orderId);
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const items = await MarketOrderItem.find({ orderId: order._id })
+            .populate('productId')
+            .populate('sellerId', 'businessName fullName email');
+
+        // Access Control
+        let hasAccess = false;
+
+        // 1. Admin always has access
+        if (user.role === 'admin') {
+            hasAccess = true;
+        }
+        // 2. Customer has access if it's their order
+        else if (order.customerId && order.customerId.toString() === user._id.toString()) {
+            hasAccess = true;
+        }
+        // 3. Seller has access if they are the seller of AT LEAST one item in the order
+        else if (user.role === 'seller') {
+            const isItemSeller = items.some(item => item.sellerId?._id.toString() === user._id.toString());
+            if (isItemSeller) {
+                hasAccess = true;
+            }
+        }
+
+        if (!hasAccess) {
+            throw { status: 403, message: 'You do not have permission to view this order' };
+        }
+
         const orderObj = order.toObject();
         orderObj.items = items;
 
@@ -660,8 +738,46 @@ class OrderService {
         };
     }
 
-    async confirmReceipt(customerId, orderId) {
-        const order = await MarketOrder.findOne({ _id: orderId, customerId });
+    async uploadFulfillmentProof(sellerId, orderItemId, proofUrl) {
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const item = await MarketOrderItem.findOne({ _id: orderItemId, sellerId });
+
+        if (!item) {
+            throw { status: 404, message: 'Order item not found' };
+        }
+
+        if (item.status !== 'confirmed' && item.status !== 'processing') {
+            throw { status: 400, message: `Cannot upload proof for item with status ${item.status}` };
+        }
+
+        item.fulfillmentProof = proofUrl;
+        item.fulfillmentDate = new Date();
+        item.status = 'shipped';
+        await item.save();
+
+        console.log(chalk.green(`✓ Fulfillment proof uploaded for item ${orderItemId}`));
+        return item;
+    }
+
+    async confirmReceipt(customerId, orderId, itemProofs = {}) {
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        let orderIdToUse = orderId;
+        let fallbackItemId = null;
+
+        let order = await MarketOrder.findOne({ _id: orderId, customerId });
+
+        // If not found, check if orderId is actually an orderItemId
+        if (!order) {
+            const item = await MarketOrderItem.findOne({ _id: orderId });
+            if (item) {
+                order = await MarketOrder.findOne({ _id: item.orderId, customerId });
+                if (order) {
+                    orderIdToUse = item.orderId;
+                    fallbackItemId = orderId;
+                }
+            }
+        }
+
         if (!order) {
             throw { status: 404, message: 'Order not found' };
         }
@@ -673,12 +789,45 @@ class OrderService {
         }
 
         const walletService = require('./wallet.service');
-        const MarketOrderItem = require('../models/MarketOrderItem');
         const orderItems = await MarketOrderItem.find({ orderId: order._id });
+
+        // Handle single proof shortcut from controller
+        if (itemProofs && itemProofs.__single_proof) {
+            const proofUrl = itemProofs.__single_proof;
+            itemProofs = {};
+
+            if (fallbackItemId) {
+                // If we know it came from an item ID in the URL, apply only to that item
+                itemProofs[fallbackItemId] = proofUrl;
+            } else {
+                // Otherwise, apply to ALL items in the order
+                orderItems.forEach(item => {
+                    itemProofs[item._id.toString()] = proofUrl;
+                });
+            }
+        }
+
+        // Update items with buyer proofs if provided
+        for (const item of orderItems) {
+            if (itemProofs[item._id.toString()]) {
+                item.buyerProof = itemProofs[item._id.toString()];
+                item.buyerConfirmationDate = new Date();
+                await item.save();
+            }
+        }
 
         // Release funds to each seller in the order
         for (const item of orderItems) {
             if (item.status !== 'delivered' && item.status !== 'cancelled') {
+                // IMPORTANT: Only release funds if BOTH seller and buyer have provided proof
+                if (!item.fulfillmentProof || !item.buyerProof) {
+                    const missing = [];
+                    if (!item.fulfillmentProof) missing.push('seller proof');
+                    if (!item.buyerProof) missing.push('buyer proof');
+                    console.log(chalk.yellow(`→ Skipping fund release for item ${item._id}: Missing ${missing.join(' and ')}.`));
+                    continue;
+                }
+
                 await walletService.credit(
                     item.sellerId,
                     item.totalPrice,
@@ -699,13 +848,23 @@ class OrderService {
             }
         }
 
-        order.status = 'delivered';
-        order.shipping.estimatedDelivery = new Date();
-        await order.save();
+        // Check if all items are now delivered
+        const remainingItems = await MarketOrderItem.countDocuments({
+            orderId: order._id,
+            status: { $ne: 'delivered' }
+        });
+
+        if (remainingItems === 0) {
+            order.status = 'delivered';
+            order.shipping.estimatedDelivery = new Date();
+            await order.save();
+        }
 
         return {
             success: true,
-            message: 'Receipt confirmed and funds released to sellers',
+            message: remainingItems === 0
+                ? 'Receipt confirmed and all funds released'
+                : 'Receipt confirmed. Funds released for items with both seller and buyer proof. Waiting for remaining proofs.',
             data: order
         };
     }

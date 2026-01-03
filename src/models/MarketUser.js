@@ -142,12 +142,20 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
             type: String,
             trim: true
         },
+        bankCode: {
+            type: String,
+            trim: true
+        },
         accountNumber: {
             type: String,
             trim: true,
             match: [/^\d{10}$/, 'Account number must be 10 digits']
         },
         accountName: {
+            type: String,
+            trim: true
+        },
+        recipientCode: {
             type: String,
             trim: true
         }

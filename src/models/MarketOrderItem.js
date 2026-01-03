@@ -36,6 +36,22 @@ const orderItemSchema = new mongoose.Schema({
         enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
         default: 'pending',
         index: true
+    },
+    fulfillmentProof: {
+        type: String,
+        default: null
+    },
+    fulfillmentDate: {
+        type: Date,
+        default: null
+    },
+    buyerProof: {
+        type: String,
+        default: null
+    },
+    buyerConfirmationDate: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true

@@ -1,61 +1,67 @@
-const https = require('https');
+const axios = require('axios');
 const config = require('../config/config');
 
-class PaystackService {
-    verifyTransaction(reference) {
-        return new Promise((resolve, reject) => {
-            const options = {
-                hostname: 'api.paystack.co',
-                port: 443,
-                path: `/transaction/verify/${reference}`,
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${config.PAYSTACK_SECRET_KEY}`
-                }
-            };
+const PAYSTACK_BASE_URL = 'https://api.paystack.co';
+const SECRET_KEY = config.PAYSTACK_SECRET_KEY;
 
-            const req = https.request(options, res => {
-                let data = '';
+const paystack = axios.create({
+    baseURL: PAYSTACK_BASE_URL,
+    headers: {
+        Authorization: `Bearer ${SECRET_KEY}`,
+        'Content-Type': 'application/json'
+    }
+});
 
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
+const getBanks = async () => {
+    try {
+        const response = await paystack.get('/bank?currency=NGN');
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
 
-                res.on('end', () => {
-                    try {
-                        const response = JSON.parse(data);
-                        if (response.status) {
-                            resolve(response.data);
-                        } else {
-                            reject(new Error(response.message));
-                        }
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            });
+const verifyAccountNumber = async (accountNumber, bankCode) => {
+    try {
+        const response = await paystack.get(`/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`);
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
 
-            req.on('error', error => {
-                reject(error);
-            });
-
-            req.end();
+const createTransferRecipient = async (name, accountNumber, bankCode) => {
+    try {
+        const response = await paystack.post('/transferrecipient', {
+            type: 'nuban',
+            name: name,
+            account_number: accountNumber,
+            bank_code: bankCode,
+            currency: 'NGN'
         });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
     }
+};
 
-    getTransactionStatus(status) {
-        const statusMap = {
-            'abandoned': 'cancelled',
-            'failed': 'failed',
-            'ongoing': 'processing',
-            'pending': 'pending',
-            'processing': 'processing',
-            'queued': 'pending',
-            'reversed': 'refunded',
-            'success': 'completed'
-        };
-        return statusMap[status] || 'pending';
+const initiateTransfer = async (amount, recipientCode, reason) => {
+    try {
+        const response = await paystack.post('/transfer', {
+            source: 'balance',
+            amount: amount * 100, // Paystack amount is in kobo
+            recipient: recipientCode,
+            reason: reason || 'Withdrawal from Sellio'
+        });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
     }
-}
+};
 
-module.exports = new PaystackService();
+module.exports = {
+    getBanks,
+    verifyAccountNumber,
+    createTransferRecipient,
+    initiateTransfer
+};

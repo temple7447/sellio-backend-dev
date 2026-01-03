@@ -203,10 +203,27 @@ class WalletService {
     }
 
     /**
+     * Get list of banks from Paystack
+     */
+    async getBanks() {
+        const paystack = require('../utils/paystack');
+        return await paystack.getBanks();
+    }
+
+    /**
+     * Verify account number with bank code
+     */
+    async verifyAccount(accountNumber, bankCode) {
+        const paystack = require('../utils/paystack');
+        return await paystack.verifyAccountNumber(accountNumber, bankCode);
+    }
+
+    /**
      * Request withdrawal
      */
     async requestWithdrawal(userId, amount) {
         const RewardSettings = require('../models/RewardSettings');
+        const paystack = require('../utils/paystack');
         const settings = await RewardSettings.getSettings();
 
         // 1. Check minimum withdrawal amount
@@ -217,7 +234,7 @@ class WalletService {
             };
         }
 
-        // 2. Check user verification status
+        // 2. Check user verification status and bank details
         const user = await MarketUser.findById(userId);
         if (!user) throw { status: 404, message: 'User not found' };
 
@@ -228,14 +245,80 @@ class WalletService {
             };
         }
 
-        // 3. Process debit (using 'withdrawal' type)
-        return await this.debit(userId, amount, 'Wallet withdrawal', {
+        if (!user.bankAccount || !user.bankAccount.accountNumber || !user.bankAccount.bankCode) {
+            throw {
+                status: 400,
+                message: 'Please update your bank information before withdrawing'
+            };
+        }
+
+        // 3. Create or get transfer recipient
+        let recipientCode = user.bankAccount.recipientCode;
+        if (!recipientCode) {
+            console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
+            const recipient = await paystack.createTransferRecipient(
+                user.bankAccount.accountName || user.fullName,
+                user.bankAccount.accountNumber,
+                user.bankAccount.bankCode
+            );
+            recipientCode = recipient.data.recipient_code;
+
+            // Save recipient code for future use
+            user.bankAccount.recipientCode = recipientCode;
+            await user.save();
+        }
+
+        // 4. Record the debit first (set as pending)
+        const transaction = await this.debit(userId, amount, 'Wallet withdrawal', {
             type: 'withdrawal',
+            status: 'pending',
             metadata: {
                 requestedAt: new Date(),
-                minWithdrawalLimit: settings.withdrawal.minAmount
+                minWithdrawalLimit: settings.withdrawal.minAmount,
+                bankName: user.bankAccount.bankName,
+                accountNumber: user.bankAccount.accountNumber
             }
         });
+
+        // 5. Initiate Paystack transfer
+        try {
+            console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amount}...`));
+            const transfer = await paystack.initiateTransfer(
+                amount,
+                recipientCode,
+                `Withdrawal for ${user.fullName} (${transaction._id})`
+            );
+
+            // Update transaction with Paystack reference
+            transaction.metadata.paystackTransferCode = transfer.data.transfer_code;
+            transaction.metadata.paystackReference = transfer.data.reference;
+            await transaction.save();
+
+            return {
+                transaction,
+                balanceAfter: user.wallet?.balance || 0 // Assuming balance is updated by debit()
+            };
+        } catch (error) {
+            console.error(chalk.red('✗ Paystack transfer initiation failed:'), error);
+
+            // If transfer initiation fails, we should probably reverse the debit 
+            // or mark it as failed so user can try again.
+            transaction.status = 'failed';
+            transaction.metadata.error = error.message || 'Transfer initiation failed';
+            await transaction.save();
+
+            // Refund the user's wallet
+            const Wallet = require('../models/Wallet');
+            await Wallet.findOneAndUpdate(
+                { userId },
+                { $inc: { balance: amount } }
+            );
+
+            throw {
+                status: 500,
+                message: `Failed to initiate transfer: ${error.message || 'Unknown error'}`
+            };
+        }
     }
 
     /**

@@ -229,4 +229,109 @@ const sendAccountVerifiedEmail = async (user) => {
     }
 };
 
-module.exports = { sendOTP, sendWelcomeEmail, sendAccountVerifiedEmail };
+const sendOrderReceiptEmail = async (recipientEmail, order, items) => {
+    try {
+        if (!transport) throw new Error('Mailtrap transport not initialized');
+
+        const sender = {
+            address: config.MAILTRAP_SENDER_EMAIL,
+            name: config.MAILTRAP_SENDER_NAME,
+        };
+
+        const itemsHtml = items.map(item => {
+            const productImage = item.productId?.images?.find(img => img.isDefault)?.url || item.productId?.images?.[0]?.url || '';
+
+            return `
+                <tr>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #edf2f7;">
+                        <div style="display: flex; align-items: flex-start;">
+                            ${productImage ? `<img src="${productImage}" alt="${item.productId?.name}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px; margin-right: 15px; border: 1px solid #edf2f7;">` : ''}
+                            <div>
+                                <p style="margin: 0; font-weight: 600; color: #1a202c;">${item.productId?.name || 'Product'}</p>
+                                <p style="margin: 4px 0 0 0; font-size: 14px; color: #718096;">Qty: ${item.quantity} x ₦${item.price.toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #edf2f7; text-align: right; vertical-align: top; font-weight: 600; color: #1a202c;">
+                        ₦${(item.price * item.quantity).toLocaleString()}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        const emailData = {
+            from: sender,
+            to: [recipientEmail],
+            subject: `Order Confirmation - #${order._id.toString().slice(-8).toUpperCase()}`,
+            html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #2d3748; margin: 0; padding: 0; background-color: #f7fafc; }
+                        .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+                        .header { background: #1a202c; padding: 40px 20px; text-align: center; color: white; }
+                        .content { padding: 40px 30px; }
+                        .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                        .summary { background: #f8fafc; border-radius: 8px; padding: 20px; margin-top: 20px; }
+                        .summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
+                        .footer { background: #f7fafc; padding: 20px; text-align: center; font-size: 14px; color: #718096; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1 style="margin: 0; font-size: 24px;">Order Received!</h1>
+                            <p style="margin: 5px 0 0 0; opacity: 0.8;">Order #${order._id.toString().slice(-8).toUpperCase()}</p>
+                        </div>
+                        <div class="content">
+                            <h2 style="color: #1a202c; margin-top: 0;">Thank you for your purchase!</h2>
+                            <p>We've received your order and the sellers have been notified. Your payment is being held securely in escrow until you confirm receipt of your items.</p>
+                            
+                            <table class="table">
+                                ${itemsHtml}
+                            </table>
+
+                            <div class="summary">
+                                <div style="display: table; width: 100%;">
+                                    <div style="display: table-row;">
+                                        <div style="display: table-cell; padding: 4px 0; color: #718096;">Subtotal</div>
+                                        <div style="display: table-cell; padding: 4px 0; text-align: right; color: #1a202c;">₦${order.totals.subtotal.toLocaleString()}</div>
+                                    </div>
+                                    <div style="display: table-row;">
+                                        <div style="display: table-cell; padding: 4px 0; color: #718096;">Fees & Protection</div>
+                                        <div style="display: table-cell; padding: 4px 0; text-align: right; color: #1a202c;">₦${(order.totals.tax + order.totals.escrowProtection + order.totals.service).toLocaleString()}</div>
+                                    </div>
+                                    <div style="display: table-row; font-weight: bold; font-size: 18px;">
+                                        <div style="display: table-cell; padding: 12px 0 0 0; color: #1a202c; border-top: 1px solid #e2e8f0;">Total Paid</div>
+                                        <div style="display: table-cell; padding: 12px 0 0 0; text-align: right; color: #2b6cb0; border-top: 1px solid #e2e8f0;">₦${order.totals.final.toLocaleString()}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 30px; padding: 20px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #3182ce;">
+                                <p style="margin: 0; font-weight: 600; color: #2c5282;">What's next?</p>
+                                <p style="margin: 5px 0 0 0; font-size: 14px; color: #2c5282;">Sellers will upload proof of shipment soon. You'll be notified to confirm when you receive your items.</p>
+                            </div>
+                        </div>
+                        <div class="footer">
+                            <p style="margin: 0;">&copy; ${new Date().getFullYear()} Sellio Marketplace. All rights reserved.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `,
+            category: 'Order Confirmation'
+        };
+
+        await transport.sendMail(emailData);
+        console.log(chalk.green(`✓ Order receipt sent to ${recipientEmail}`));
+        return { success: true };
+    } catch (error) {
+        console.error(chalk.red('✗ Order receipt email failed:'), error.message);
+        return { success: false, error: error.message };
+    }
+};
+
+module.exports = { sendOTP, sendWelcomeEmail, sendAccountVerifiedEmail, sendOrderReceiptEmail };

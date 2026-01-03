@@ -129,6 +129,39 @@ class WalletController {
     }
 
     /**
+     * Get list of banks
+     * GET /api/wallet/banks
+     */
+    async getBanks(req, res) {
+        try {
+            const banks = await walletService.getBanks();
+            res.json(banks);
+        } catch (error) {
+            console.error(chalk.red('✗ Fetching banks failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Verify account number
+     * POST /api/wallet/verify-account
+     */
+    async verifyAccount(req, res) {
+        try {
+            const { accountNumber, bankCode } = req.body;
+            if (!accountNumber || !bankCode) {
+                return res.status(400).json({ message: 'Account number and bank code are required' });
+            }
+
+            const verification = await walletService.verifyAccount(accountNumber, bankCode);
+            res.json(verification);
+        } catch (error) {
+            console.error(chalk.red('✗ Account verification failed:', error.message));
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
+
+    /**
      * Request withdrawal
      * POST /api/wallet/withdraw
      */

@@ -16,6 +16,7 @@ const testimonialRoutes = require('./routes/testimonial.routes');
 const reviewRoutes = require('./routes/review.routes');
 const walletRoutes = require('./routes/wallet.routes');
 const wishlistRoutes = require('./routes/wishlist.routes');
+const mediaRoutes = require('./routes/media.routes');
 const cleanupService = require('./services/cleanup.service');
 
 // Start background services
@@ -89,6 +90,7 @@ app.use('/api/testimonials', testimonialRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {

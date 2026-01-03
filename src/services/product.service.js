@@ -19,10 +19,10 @@ class ProductService {
                 }
             }
 
-            // Validate and parse price
+            // Validate and parse price (handle both nested and flattened structures)
             const price = {
-                current: parseFloat(productData.price) || 0,
-                discount: parseFloat(productData.discount) || 0
+                current: parseFloat(productData['price.current'] || (productData.price && productData.price.current) || productData.price) || 0,
+                discount: parseFloat(productData['price.discount'] || (productData.price && productData.price.discount) || productData.discount) || 0
             };
 
             if (price.current <= 0) {
@@ -33,10 +33,10 @@ class ProductService {
                 throw { status: 400, message: 'Discount must be between 0 and 100' };
             }
 
-            // Validate inventory
+            // Validate and parse inventory (handle both nested and flattened structures)
             const inventory = {
-                quantity: parseInt(productData.initialInventory) || 0,
-                lowStockAlert: parseInt(productData.lowStockAlert) || 5
+                quantity: parseInt(productData['inventory.quantity'] || (productData.inventory && productData.inventory.quantity) || productData.initialInventory) || 0,
+                lowStockAlert: parseInt(productData['inventory.lowStockAlert'] || (productData.inventory && productData.inventory.lowStockAlert) || productData.lowStockAlert) || 5
             };
 
             // Only add SKU if provided
