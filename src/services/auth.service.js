@@ -2,7 +2,7 @@ const { MarketUser, MarketSeller, MarketCustomer } = require('../models/MarketUs
 const MarketProduct = require('../models/MarketProduct');
 const MarketOTP = require('../models/MarketOTP');
 const addressService = require('./address.service');
-const { sendOTP } = require('../utils/email');
+const { sendOTP, sendWelcomeEmail } = require('../utils/email');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
@@ -248,6 +248,10 @@ class AuthService {
         const user = await MarketUser.findOne({ email });
         user.isVerified = true;
         await user.save();
+
+        // Send welcome email after verification
+        sendWelcomeEmail(user).catch(err => console.error('Error sending welcome email:', err));
+
         await MarketOTP.deleteOne({ _id: otpRecord._id });
 
         // Generate JWT token
@@ -384,9 +388,37 @@ class AuthService {
             user.referralCode = updatedUser.referralCode;
         }
 
-        const profile = user.toObject();
-        profile.referralCode = user.referralCode;
-        profile.referralLink = this.getReferralLink(user.referralCode);
+        const profile = {
+            id: user._id,
+            email: user.email,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
+            role: user.role,
+            isVerified: user.isVerified,
+            profileImage: user.profileImage || null,
+            referralCode: user.referralCode,
+            referralLink: this.getReferralLink(user.referralCode),
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            ...(user.role === 'seller' ? {
+                businessName: user.businessName,
+                businessAddress: user.businessAddress,
+                adminVerified: user.adminVerified || false,
+                governmentId: user.governmentId,
+                bankAccount: user.bankAccount ? {
+                    bankName: user.bankAccount.bankName || null,
+                    accountNumber: user.bankAccount.accountNumber || null,
+                    accountName: user.bankAccount.accountName || null
+                } : null
+            } : user.role === 'customer' ? {
+                metadata: {
+                    lastLogin: user.metadata?.lastLogin || null,
+                    totalOrders: user.metadata?.totalOrders || 0
+                }
+            } : {
+                permissions: user.permissions || []
+            })
+        };
 
         return profile;
     }
@@ -1086,6 +1118,43 @@ class AuthService {
             throw {
                 status: error.status || 500,
                 message: error.message || 'Failed to get referral code'
+            };
+        }
+    }
+
+    async getReferralStats(userId) {
+        try {
+            const MarketReferral = require('../models/MarketReferral');
+            const RewardSettings = require('../models/RewardSettings');
+
+            const [referrals, settings] = await Promise.all([
+                MarketReferral.find({ referrerId: userId }),
+                RewardSettings.getSettings()
+            ]);
+
+            const stats = {
+                totalReferrals: referrals.length,
+                pendingRewards: 0,
+                totalEarned: 0,
+                referralBonusAmount: settings.referralBonus.amount
+            };
+
+            referrals.forEach(ref => {
+                if (ref.status === 'bonus_paid') {
+                    stats.totalEarned += (ref.bonusAmount || settings.referralBonus.amount);
+                } else if (ref.status === 'signed_up' || ref.status === 'verified') {
+                    stats.pendingRewards += settings.referralBonus.amount;
+                }
+            });
+
+            return {
+                success: true,
+                data: stats
+            };
+        } catch (error) {
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Failed to fetch referral stats'
             };
         }
     }

@@ -45,11 +45,18 @@ const isAdmin = async (req, res, next) => {
 
 const isAdminVerified = async (req, res, next) => {
     if (req.user.role === 'seller' && !req.user.adminVerified) {
-        return res.status(403).json({ 
-            message: 'Your account is pending admin verification. Please wait for approval.' 
+        return res.status(403).json({
+            message: 'Your account is pending admin verification. Please wait for approval.'
         });
     }
     next();
 };
 
-module.exports = { auth, isVerified, isSeller, isAdmin, isAdminVerified };
+const isCustomer = async (req, res, next) => {
+    if (req.user.role !== 'customer') {
+        return res.status(403).json({ message: 'Customer access required.' });
+    }
+    next();
+};
+
+module.exports = { auth, isVerified, isSeller, isAdmin, isAdminVerified, isCustomer };

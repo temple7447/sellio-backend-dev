@@ -242,6 +242,16 @@ class AuthController {
             res.status(error.status || 500).json({ message: error.message });
         }
     }
+
+    async getReferralStats(req, res) {
+        try {
+            const result = await authService.getReferralStats(req.user._id);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Failed to get referral stats:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
 }
 
 module.exports = new AuthController();

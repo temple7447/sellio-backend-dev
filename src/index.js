@@ -15,6 +15,7 @@ const categoryRoutes = require('./routes/category.routes');
 const testimonialRoutes = require('./routes/testimonial.routes');
 const reviewRoutes = require('./routes/review.routes');
 const walletRoutes = require('./routes/wallet.routes');
+const wishlistRoutes = require('./routes/wishlist.routes');
 const cleanupService = require('./services/cleanup.service');
 
 // Start background services
@@ -65,7 +66,8 @@ app.get("/", (req, res) => {
             orders: '/api/orders',
             categories: '/api/categories',
             testimonials: '/api/testimonials',
-            wallet: '/api/wallet'
+            wallet: '/api/wallet',
+            wishlist: '/api/wishlist'
         }
     });
 });
@@ -86,6 +88,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/testimonials', testimonialRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/wishlist', wishlistRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {

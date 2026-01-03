@@ -1,4 +1,5 @@
 const { MarketUser } = require('../models/MarketUser');
+const { sendAccountVerifiedEmail } = require('../utils/email');
 const config = require('../config/config');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -105,6 +106,9 @@ class AdminService {
 
         seller.adminVerified = true;
         await seller.save();
+
+        // Send confirmation email
+        sendAccountVerifiedEmail(seller).catch(err => console.error('Error sending verification email:', err));
 
         return {
             message: 'Seller verified successfully',

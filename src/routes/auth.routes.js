@@ -116,6 +116,7 @@ router.put('/seller/profile-image', auth, isSeller, upload.single('profileImage'
 
 // Get referral code and link (available for all authenticated users)
 router.get('/referral', auth, authController.getReferralCode);
+router.get('/referral/stats', auth, authController.getReferralStats);
 
 // Admin - Reward Settings Management
 router.get('/admin/reward-settings', auth, isAdmin, adminController.getRewardSettings);
