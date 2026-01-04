@@ -62,6 +62,29 @@ const userSchema = new mongoose.Schema({
     deletionReason: {
         type: String,
         default: null
+    },
+    bankAccount: {
+        bankName: {
+            type: String,
+            trim: true
+        },
+        bankCode: {
+            type: String,
+            trim: true
+        },
+        accountNumber: {
+            type: String,
+            trim: true,
+            match: [/^\d{10}$/, 'Account number must be 10 digits']
+        },
+        accountName: {
+            type: String,
+            trim: true
+        },
+        recipientCode: {
+            type: String,
+            trim: true
+        }
     }
 }, {
     timestamps: true,
@@ -136,29 +159,6 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
     adminVerified: {
         type: Boolean,
         default: false
-    },
-    bankAccount: {
-        bankName: {
-            type: String,
-            trim: true
-        },
-        bankCode: {
-            type: String,
-            trim: true
-        },
-        accountNumber: {
-            type: String,
-            trim: true,
-            match: [/^\d{10}$/, 'Account number must be 10 digits']
-        },
-        accountName: {
-            type: String,
-            trim: true
-        },
-        recipientCode: {
-            type: String,
-            trim: true
-        }
     }
 }));
 

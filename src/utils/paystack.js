@@ -59,9 +59,57 @@ const initiateTransfer = async (amount, recipientCode, reason) => {
     }
 };
 
+/**
+ * Initialize a Paystack transaction
+ */
+const initializeTransaction = async (email, amount, reference, callbackUrl) => {
+    try {
+        const response = await paystack.post('/transaction/initialize', {
+            email,
+            amount: Math.round(amount * 100), // Convert to kobo
+            reference,
+            callback_url: callbackUrl
+        });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
+
+/**
+ * Verify a Paystack transaction by reference
+ */
+const verifyTransaction = async (reference) => {
+    try {
+        const response = await paystack.get(`/transaction/verify/${reference}`);
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
+
+/**
+ * Map Paystack status to system status
+ */
+const getTransactionStatus = (paystackStatus) => {
+    switch (paystackStatus) {
+        case 'success':
+            return 'completed';
+        case 'failed':
+            return 'failed';
+        case 'abandoned':
+            return 'failed';
+        default:
+            return 'pending';
+    }
+};
+
 module.exports = {
     getBanks,
     verifyAccountNumber,
     createTransferRecipient,
-    initiateTransfer
+    initiateTransfer,
+    initializeTransaction,
+    verifyTransaction,
+    getTransactionStatus
 };

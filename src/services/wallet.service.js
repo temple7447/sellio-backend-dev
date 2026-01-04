@@ -169,6 +169,40 @@ class WalletService {
     }
 
     /**
+     * Get all transactions across the system (Admin only)
+     */
+    async getAllTransactions(query = {}) {
+        const { page = 1, limit = 20, type, status, userId, reference } = query;
+        const skip = (page - 1) * limit;
+
+        const filter = {};
+        if (type) filter.type = type;
+        if (status) filter.status = status;
+        if (userId) filter.userId = userId;
+        if (reference) filter.reference = reference;
+
+        const [transactions, total] = await Promise.all([
+            WalletTransaction.find(filter)
+                .populate('userId', 'fullName email phoneNumber businessName')
+                .sort('-createdAt')
+                .skip(skip)
+                .limit(parseInt(limit))
+                .lean(),
+            WalletTransaction.countDocuments(filter)
+        ]);
+
+        return {
+            transactions,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
+            }
+        };
+    }
+
+    /**
      * Get wallet summary statistics
      */
     async getWalletSummary(userId) {
@@ -207,7 +241,21 @@ class WalletService {
      */
     async getBanks() {
         const paystack = require('../utils/paystack');
-        return await paystack.getBanks();
+        const response = await paystack.getBanks();
+
+        // Inject Test Bank for sandboxing
+        if (response.status && response.data) {
+            response.data.unshift({
+                name: "Test Bank (Paystack Sandbox)",
+                slug: "test-bank-sandbox",
+                code: "001",
+                active: true,
+                is_deleted: false,
+                type: "nuban"
+            });
+        }
+
+        return response;
     }
 
     /**
@@ -255,13 +303,19 @@ class WalletService {
         // 3. Create or get transfer recipient
         let recipientCode = user.bankAccount.recipientCode;
         if (!recipientCode) {
-            console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
-            const recipient = await paystack.createTransferRecipient(
-                user.bankAccount.accountName || user.fullName,
-                user.bankAccount.accountNumber,
-                user.bankAccount.bankCode
-            );
-            recipientCode = recipient.data.recipient_code;
+            // SIMULATION: If bankCode is 001 (Test Bank), simulate a success
+            if (user.bankAccount.bankCode === '001') {
+                console.log(chalk.yellow('ℹ Sandbox: Simulating Paystack recipient creation for Test Bank'));
+                recipientCode = `RCP_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`;
+            } else {
+                console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
+                const recipient = await paystack.createTransferRecipient(
+                    user.bankAccount.accountName || user.fullName,
+                    user.bankAccount.accountNumber,
+                    user.bankAccount.bankCode
+                );
+                recipientCode = recipient.data.recipient_code;
+            }
 
             // Save recipient code for future use
             user.bankAccount.recipientCode = recipientCode;
@@ -269,7 +323,7 @@ class WalletService {
         }
 
         // 4. Record the debit first (set as pending)
-        const transaction = await this.debit(userId, amount, 'Wallet withdrawal', {
+        const debitResult = await this.debit(userId, amount, 'Wallet withdrawal', {
             type: 'withdrawal',
             status: 'pending',
             metadata: {
@@ -280,45 +334,150 @@ class WalletService {
             }
         });
 
+        const transaction = debitResult.transaction;
+
         // 5. Initiate Paystack transfer
         try {
-            console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amount}...`));
-            const transfer = await paystack.initiateTransfer(
-                amount,
-                recipientCode,
-                `Withdrawal for ${user.fullName} (${transaction._id})`
-            );
+            let transferData;
+
+            // SIMULATION: If it's a test recipient, simulate a success
+            if (recipientCode.startsWith('RCP_TEST_')) {
+                console.log(chalk.yellow(`ℹ Sandbox: Simulating Paystack transfer of ₦${amount}`));
+                transferData = {
+                    data: {
+                        transfer_code: `TRF_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`,
+                        reference: `REF_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`,
+                        status: 'success'
+                    }
+                };
+            } else {
+                console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amount}...`));
+                transferData = await paystack.initiateTransfer(
+                    amount,
+                    recipientCode,
+                    `Withdrawal for ${user.fullName} (${transaction._id})`
+                );
+            }
 
             // Update transaction with Paystack reference
-            transaction.metadata.paystackTransferCode = transfer.data.transfer_code;
-            transaction.metadata.paystackReference = transfer.data.reference;
+            transaction.metadata.paystackTransferCode = transferData.data.transfer_code;
+            transaction.metadata.paystackReference = transferData.data.reference;
+
+            // If it was simulated, we can mark it as successful immediately in test mode
+            if (recipientCode.startsWith('RCP_TEST_')) {
+                transaction.status = 'completed';
+            }
+
             await transaction.save();
 
             return {
                 transaction,
-                balanceAfter: user.wallet?.balance || 0 // Assuming balance is updated by debit()
+                balanceAfter: debitResult.balanceAfter
             };
         } catch (error) {
             console.error(chalk.red('✗ Paystack transfer initiation failed:'), error);
 
-            // If transfer initiation fails, we should probably reverse the debit 
-            // or mark it as failed so user can try again.
-            transaction.status = 'failed';
-            transaction.metadata.error = error.message || 'Transfer initiation failed';
-            await transaction.save();
+            // HYBRID SYSTEM: Instead of auto-refunding, we keep it pending and flag for admin
+            if (transaction) {
+                transaction.status = 'pending';
+                transaction.metadata.paystackError = error.message || 'Transfer initiation failed';
+                transaction.metadata.requiresManualAction = true;
+                transaction.metadata.failedAt = new Date();
+                await transaction.save();
 
-            // Refund the user's wallet
-            const Wallet = require('../models/Wallet');
-            await Wallet.findOneAndUpdate(
-                { userId },
-                { $inc: { balance: amount } }
-            );
+                console.log(chalk.yellow(`⚠ Withdrawal ${transaction.reference} queued for manual admin review due to Paystack failure.`));
+
+                return {
+                    transaction,
+                    balanceAfter: debitResult.balanceAfter,
+                    requiresManualAction: true,
+                    message: 'Automated transfer failed, but request is queued for manual processing.'
+                };
+            }
 
             throw {
                 status: 500,
                 message: `Failed to initiate transfer: ${error.message || 'Unknown error'}`
             };
         }
+    }
+
+    /**
+     * Process a manual withdrawal request (Admin Only)
+     */
+    async processManualWithdrawal(transactionId, status, adminData = {}) {
+        const transaction = await WalletTransaction.findById(transactionId);
+        if (!transaction) throw { status: 404, message: 'Transaction not found' };
+
+        if (transaction.type !== 'withdrawal') {
+            throw { status: 400, message: 'Transaction is not a withdrawal' };
+        }
+
+        if (transaction.status !== 'pending') {
+            throw { status: 400, message: `Cannot process transaction with status: ${transaction.status}` };
+        }
+
+        const { reason, adminId } = adminData;
+
+        if (status === 'completed') {
+            transaction.status = 'completed';
+            transaction.metadata.manuallyProcessed = true;
+            transaction.metadata.processedAt = new Date();
+            transaction.metadata.processedBy = adminId;
+            await transaction.save();
+
+            return { success: true, transaction };
+        }
+
+        if (status === 'failed') {
+            transaction.status = 'failed';
+            transaction.metadata.declineReason = reason || 'Declined by admin';
+            transaction.metadata.processedAt = new Date();
+            transaction.metadata.processedBy = adminId;
+            await transaction.save();
+
+            // Perform the refund
+            console.log(chalk.red(`→ Refunding ₦${transaction.amount} to user ${transaction.userId} due to manual decline`));
+
+            const MarketWallet = require('../models/MarketWallet');
+            await MarketWallet.findOneAndUpdate(
+                { userId: transaction.userId },
+                {
+                    $inc: { balance: transaction.amount },
+                    $set: { lastTransactionAt: new Date() }
+                }
+            );
+
+            // Record a reversal transaction for clarity
+            const reversal = await WalletTransaction.create({
+                userId: transaction.userId,
+                type: 'deposit',
+                amount: transaction.amount,
+                balanceBefore: 0, // We'll need to fetch current balance to be precise, or just use 0 if we don't track it here
+                // Note: balanceBefore/After in WalletTransaction usually reflects the balance AFTER the specific operation it describes.
+                // In our 'debit' method, balanceAfter is balance before - amount.
+                // For reversal, we'll just omit or set logically if we have the wallet.
+                balanceAfter: 0,
+                reference: `REV-${transaction.reference}`,
+                description: `Reversal: ${transaction.description}`,
+                status: 'completed',
+                paymentGateway: 'system',
+                metadata: {
+                    originalTransactionId: transaction._id,
+                    reason: reason || 'Manual decline by admin'
+                }
+            });
+
+            // Refresh balance after in reversal
+            const wallet = await MarketWallet.findOne({ userId: transaction.userId });
+            reversal.balanceAfter = wallet.balance;
+            reversal.balanceBefore = wallet.balance - transaction.amount;
+            await reversal.save();
+
+            return { success: true, transaction, reversal };
+        }
+
+        throw { status: 400, message: 'Invalid status for manual processing. Use "completed" or "failed".' };
     }
 
     /**

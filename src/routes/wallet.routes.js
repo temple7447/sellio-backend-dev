@@ -25,6 +25,13 @@ router.get('/transactions', auth, walletController.getTransactions);
 router.get('/summary', auth, walletController.getSummary);
 
 /**
+ * @route   GET /api/wallet/admin/transactions
+ * @desc    Get all transactions across the system (Admin only)
+ * @access  Private (Admin)
+ */
+router.get('/admin/transactions', auth, isAdmin, walletController.getAllTransactions);
+
+/**
  * @route   GET /api/wallet/transaction/:reference
  * @desc    Verify transaction by reference
  * @access  Private (All authenticated users)
@@ -65,5 +72,19 @@ router.post('/debit', auth, isAdmin, walletController.debitWallet);
  * @access  Private (All authenticated users)
  */
 router.post('/withdraw', auth, walletController.requestWithdrawal);
+
+/**
+ * @route   POST /api/wallet/admin/withdrawals/:transactionId/approve
+ * @desc    Approve a pending withdrawal manually (Admin only)
+ * @access  Private (Admin)
+ */
+router.post('/admin/withdrawals/:transactionId/approve', auth, isAdmin, walletController.approveWithdrawal);
+
+/**
+ * @route   POST /api/wallet/admin/withdrawals/:transactionId/decline
+ * @desc    Decline a pending withdrawal manually (Admin only)
+ * @access  Private (Admin)
+ */
+router.post('/admin/withdrawals/:transactionId/decline', auth, isAdmin, walletController.declineWithdrawal);
 
 module.exports = router;

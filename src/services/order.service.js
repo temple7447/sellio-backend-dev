@@ -253,26 +253,17 @@ class OrderService {
                 throw { status: 400, message: 'Buyer email is required for payment' };
             }
 
-            const response = await axios.post(
-                'https://api.paystack.co/transaction/initialize',
-                {
-                    amount: Math.round(order.totals.final * 100), // Convert to kobo
-                    email,
-                    reference: `ORD-${order._id}`,
-                    callback_url: `${config.FRONTEND_URL}/payment/verify/${order._id}`
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
+            const response = await paystackService.initializeTransaction(
+                email,
+                order.totals.final,
+                `ORD-${order._id}`,
+                `${config.FRONTEND_URL}/payment/verify/${order._id}`
             );
 
             return {
                 order,
-                paymentUrl: response.data.data.authorization_url,
-                reference: response.data.data.reference
+                paymentUrl: response.data.authorization_url,
+                reference: response.data.reference
             };
         } catch (error) {
             throw {
@@ -295,7 +286,8 @@ class OrderService {
             }
 
             // Verify with Paystack using the correct reference
-            const paymentData = await paystackService.verifyTransaction(refToVerify);
+            const response = await paystackService.verifyTransaction(refToVerify);
+            const paymentData = response.data;
 
             // Extract orderId from reference
             const orderId = refToVerify.startsWith('ORD-') ?

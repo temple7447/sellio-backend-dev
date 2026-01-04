@@ -33,6 +33,21 @@ class WalletController {
     }
 
     /**
+     * Get all transactions (Admin only)
+     * GET /api/wallet/admin/transactions
+     */
+    async getAllTransactions(req, res) {
+        try {
+            const result = await walletService.getAllTransactions(req.query);
+            console.log(chalk.green(`✓ Admin retrieved ${result.transactions.length} global transactions`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin get all transactions failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
      * Get wallet summary with statistics
      * GET /api/wallet/summary
      */
@@ -174,13 +189,60 @@ class WalletController {
 
             const result = await walletService.requestWithdrawal(req.user._id, amount);
             console.log(chalk.green('✓ Withdrawal request processed successfully'));
+
             res.json({
-                message: 'Withdrawal request processed successfully',
+                message: result.message || 'Withdrawal request processed successfully',
                 transaction: result.transaction,
-                newBalance: result.balanceAfter
+                newBalance: result.balanceAfter,
+                requiresManualAction: result.requiresManualAction || false
             });
         } catch (error) {
             console.error(chalk.red('✗ Withdrawal failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Approve a pending withdrawal (Admin Only)
+     * POST /api/wallet/admin/withdrawals/:transactionId/approve
+     */
+    async approveWithdrawal(req, res) {
+        try {
+            const { transactionId } = req.params;
+            const result = await walletService.processManualWithdrawal(transactionId, 'completed', {
+                adminId: req.user._id
+            });
+
+            console.log(chalk.green('✓ Withdrawal approved manually'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Manual approval failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Decline a pending withdrawal (Admin Only)
+     * POST /api/wallet/admin/withdrawals/:transactionId/decline
+     */
+    async declineWithdrawal(req, res) {
+        try {
+            const { transactionId } = req.params;
+            const { reason } = req.body;
+
+            if (!reason) {
+                return res.status(400).json({ message: 'A reason for declining is required' });
+            }
+
+            const result = await walletService.processManualWithdrawal(transactionId, 'failed', {
+                reason,
+                adminId: req.user._id
+            });
+
+            console.log(chalk.green('✓ Withdrawal declined manually'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Manual decline failed:', error.message));
             res.status(error.status || 500).json({ message: error.message });
         }
     }

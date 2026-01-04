@@ -983,15 +983,12 @@ class AuthService {
         return { success: true, message: 'Password reset successful' };
     }
 
-    async addBankInfo(sellerId, bankData) {
+    async addBankInfo(userId, bankData) {
         try {
-            const seller = await MarketUser.findOne({
-                _id: sellerId,
-                role: 'seller'
-            });
+            const user = await MarketUser.findById(userId);
 
-            if (!seller) {
-                throw { status: 404, message: 'Seller not found' };
+            if (!user) {
+                throw { status: 404, message: 'User not found' };
             }
 
             // Validate required fields
@@ -1014,7 +1011,7 @@ class AuthService {
             }
 
             // Update bank information
-            seller.bankAccount = {
+            user.bankAccount = {
                 bankName: bankData.bankName,
                 bankCode: bankData.bankCode,
                 accountNumber: bankData.accountNumber,
@@ -1022,16 +1019,16 @@ class AuthService {
                 recipientCode: null // Reset recipient code when bank info changes
             };
 
-            await seller.save();
+            await user.save();
 
             return {
                 success: true,
-                message: 'Bank information added successfully',
+                message: 'Bank information updated successfully',
                 data: {
-                    bankName: seller.bankAccount.bankName,
-                    bankCode: seller.bankAccount.bankCode,
-                    accountNumber: seller.bankAccount.accountNumber,
-                    accountName: seller.bankAccount.accountName
+                    bankName: user.bankAccount.bankName,
+                    bankCode: user.bankAccount.bankCode,
+                    accountNumber: user.bankAccount.accountNumber,
+                    accountName: user.bankAccount.accountName
                 }
             };
         } catch (error) {
@@ -1042,19 +1039,20 @@ class AuthService {
         }
     }
 
-    async getBankInfo(sellerId) {
+    async getBankInfo(userId) {
         try {
-            const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
-            if (!seller) {
-                throw { status: 404, message: 'Seller not found' };
+            const user = await MarketUser.findById(userId);
+            if (!user) {
+                throw { status: 404, message: 'User not found' };
             }
 
-            const bank = seller.bankAccount || null;
+            const bank = user.bankAccount || null;
             return {
                 success: true,
                 message: bank ? 'Bank information fetched successfully' : 'No bank information found',
                 data: bank ? {
                     bankName: bank.bankName || null,
+                    bankCode: bank.bankCode || null,
                     accountNumber: bank.accountNumber || null,
                     accountName: bank.accountName || null
                 } : null
@@ -1067,9 +1065,9 @@ class AuthService {
         }
     }
 
-    async updateBankInfo(sellerId, bankData) {
+    async updateBankInfo(userId, bankData) {
         // Reuse addBankInfo logic for upsert/update
-        return this.addBankInfo(sellerId, bankData);
+        return this.addBankInfo(userId, bankData);
     }
 
     async uploadSellerProfileImage(sellerId, imageFile) {

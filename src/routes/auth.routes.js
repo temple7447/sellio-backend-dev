@@ -107,9 +107,16 @@ router.post('/reset-password', authController.resetPassword);
 router.delete('/admin/users/:userId', auth, isAdmin, adminController.deleteUser);
 router.put('/admin/users/:userId', auth, isAdmin, adminController.adminUpdateUser);
 router.get('/admin/sellers/:sellerId/bank-info', auth, isAdmin, adminController.getSellerBankInfo);
-router.post('/seller/bank-info', auth, isSeller, authController.addBankInfo);
-router.get('/seller/bank-info', auth, isSeller, authController.getBankInfo);
-router.put('/seller/bank-info', auth, isSeller, authController.updateBankInfo);
+
+// Universal bank information routes (available for all user roles)
+router.post('/user/bank-info', auth, authController.addBankInfo);
+router.get('/user/bank-info', auth, authController.getBankInfo);
+router.put('/user/bank-info', auth, authController.updateBankInfo);
+
+// Legacy routes (maintained for backward compatibility)
+router.post('/seller/bank-info', auth, authController.addBankInfo);
+router.get('/seller/bank-info', auth, authController.getBankInfo);
+router.put('/seller/bank-info', auth, authController.updateBankInfo);
 
 // Upload seller profile image (separate endpoint)
 router.put('/seller/profile-image', auth, isSeller, upload.single('profileImage'), authController.uploadSellerProfileImage);

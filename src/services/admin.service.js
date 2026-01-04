@@ -275,6 +275,9 @@ class AdminService {
             limit = 10,
             sellerId,
             category,
+            brand,
+            minPrice,
+            maxPrice,
             search,
             sort = '-createdAt'
         } = query;
@@ -284,20 +287,59 @@ class AdminService {
         const filter = {};
         if (status) filter.status = status;
         if (sellerId) filter.sellerId = sellerId;
-        if (category) filter.category = category;
+
+        // Handle category (resolve name/slug to ID if needed)
+        if (category) {
+            if (mongoose.Types.ObjectId.isValid(category)) {
+                filter.category = category;
+            } else {
+                const MarketCategory = require('../models/MarketCategory');
+                const cat = await MarketCategory.findOne({
+                    $or: [
+                        { name: { $regex: new RegExp(`^${category}$`, 'i') } },
+                        { slug: category.toLowerCase() }
+                    ]
+                });
+                if (cat) {
+                    filter.category = cat._id;
+                } else {
+                    // If category not found, return empty results early
+                    return {
+                        products: [],
+                        pagination: {
+                            total: 0,
+                            pages: 0,
+                            currentPage: parseInt(page),
+                            limit: parseInt(limit)
+                        }
+                    };
+                }
+            }
+        }
+
+        if (brand) filter.brand = { $regex: new RegExp(brand, 'i') };
+
+        // Handle price range
+        if (minPrice !== undefined || maxPrice !== undefined) {
+            filter['price.current'] = {};
+            if (minPrice !== undefined) filter['price.current'].$gte = parseFloat(minPrice);
+            if (maxPrice !== undefined) filter['price.current'].$lte = parseFloat(maxPrice);
+        }
+
         if (search) {
             filter.$or = [
                 { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { description: { $regex: search, $options: 'i' } },
+                { brand: { $regex: search, $options: 'i' } }
             ];
         }
 
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
-                .populate('sellerId', 'businessName email')
-                .populate('category', 'name')
+                .populate('sellerId', 'businessName email fullName')
+                .populate('category', 'name slug')
                 .skip(skip)
-                .limit(limit)
+                .limit(parseInt(limit))
                 .sort(sort),
             MarketProduct.countDocuments(filter)
         ]);
@@ -307,8 +349,8 @@ class AdminService {
             pagination: {
                 total,
                 pages: Math.ceil(total / limit),
-                currentPage: page,
-                limit
+                currentPage: parseInt(page),
+                limit: parseInt(limit)
             }
         };
     }
