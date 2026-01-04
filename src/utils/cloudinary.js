@@ -9,11 +9,11 @@ cloudinary.config({
 });
 
 const validateFile = (file) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     const maxSize = 5 * 1024 * 1024; // 5MB
 
     if (!allowedTypes.includes(file.mimetype)) {
-        throw new Error(`Invalid file type. Allowed types: ${allowedTypes.join(', ')}`);
+        throw new Error(`Invalid file type: ${file.mimetype}. Allowed types: ${allowedTypes.join(', ')}`);
     }
 
     if (file.size > maxSize) {
@@ -24,7 +24,7 @@ const validateFile = (file) => {
 const uploadToCloudinary = async (file, folder) => {
     try {
         validateFile(file);
-        
+
         const base64Data = file.buffer.toString('base64');
         const result = await cloudinary.uploader.upload(`data:${file.mimetype};base64,${base64Data}`, {
             folder,
