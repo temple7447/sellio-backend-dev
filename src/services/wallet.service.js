@@ -300,28 +300,6 @@ class WalletService {
             };
         }
 
-        // 3. Create or get transfer recipient
-        let recipientCode = user.bankAccount.recipientCode;
-        if (!recipientCode) {
-            // SIMULATION: If bankCode is 001 (Test Bank), simulate a success
-            if (user.bankAccount.bankCode === '001') {
-                console.log(chalk.yellow('ℹ Sandbox: Simulating Paystack recipient creation for Test Bank'));
-                recipientCode = `RCP_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`;
-            } else {
-                console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
-                const recipient = await paystack.createTransferRecipient(
-                    user.bankAccount.accountName || user.fullName,
-                    user.bankAccount.accountNumber,
-                    user.bankAccount.bankCode
-                );
-                recipientCode = recipient.data.recipient_code;
-            }
-
-            // Save recipient code for future use
-            user.bankAccount.recipientCode = recipientCode;
-            await user.save();
-        }
-
         // 4. Record the debit first (set as pending)
         const debitResult = await this.debit(userId, amount, 'Wallet withdrawal', {
             type: 'withdrawal',
@@ -336,8 +314,30 @@ class WalletService {
 
         const transaction = debitResult.transaction;
 
-        // 5. Initiate Paystack transfer
+        // 5. Create recipient and initiate Paystack transfer
         try {
+            // Create or get transfer recipient
+            let recipientCode = user.bankAccount.recipientCode;
+            if (!recipientCode) {
+                // SIMULATION: If bankCode is 001 (Test Bank), simulate a success
+                if (user.bankAccount.bankCode === '001') {
+                    console.log(chalk.yellow('ℹ Sandbox: Simulating Paystack recipient creation for Test Bank'));
+                    recipientCode = `RCP_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`;
+                } else {
+                    console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
+                    const recipient = await paystack.createTransferRecipient(
+                        user.bankAccount.accountName || user.fullName,
+                        user.bankAccount.accountNumber,
+                        user.bankAccount.bankCode
+                    );
+                    recipientCode = recipient.data.recipient_code;
+                }
+
+                // Save recipient code for future use
+                user.bankAccount.recipientCode = recipientCode;
+                await user.save();
+            }
+
             let transferData;
 
             // SIMULATION: If it's a test recipient, simulate a success
@@ -362,13 +362,52 @@ class WalletService {
             // Update transaction with Paystack reference
             transaction.metadata.paystackTransferCode = transferData.data.transfer_code;
             transaction.metadata.paystackReference = transferData.data.reference;
+            transaction.metadata.paystackStatus = transferData.data.status;
 
-            // If it was simulated, we can mark it as successful immediately in test mode
-            if (recipientCode.startsWith('RCP_TEST_')) {
+            // Map Paystack status to internal status
+            const paystackStatus = transferData.data.status;
+            if (paystackStatus === 'success' || recipientCode.startsWith('RCP_TEST_')) {
                 transaction.status = 'completed';
+            } else if (paystackStatus === 'failed') {
+                transaction.status = 'failed';
+                transaction.metadata.paystackError = transferData.message || 'Transfer failed at initiation';
+            } else {
+                // For 'pending', 'processing', or 'queued', we keep it as 'pending'
+                transaction.status = 'pending';
             }
 
             await transaction.save();
+
+            // If it failed immediately, we should refund the user
+            if (transaction.status === 'failed') {
+                console.log(chalk.red(`→ Automatic refund: Paystack initiation failed for ${transaction.reference}`));
+                const MarketWallet = require('../models/MarketWallet');
+                await MarketWallet.findOneAndUpdate(
+                    { userId: transaction.userId },
+                    {
+                        $inc: { balance: transaction.amount },
+                        $set: { lastTransactionAt: new Date() }
+                    }
+                );
+
+                // Record the reversal transaction
+                const wallet = await MarketWallet.findOne({ userId: transaction.userId });
+                await WalletTransaction.create({
+                    userId: transaction.userId,
+                    type: 'deposit',
+                    amount: transaction.amount,
+                    balanceBefore: wallet.balance - transaction.amount,
+                    balanceAfter: wallet.balance,
+                    reference: `REV-${transaction.reference}`,
+                    description: `Reversal (Initiation Failed): ${transaction.description}`,
+                    status: 'completed',
+                    paymentGateway: 'system',
+                    metadata: {
+                        originalTransactionId: transaction._id,
+                        reason: 'Paystack initiation failed'
+                    }
+                });
+            }
 
             return {
                 transaction,

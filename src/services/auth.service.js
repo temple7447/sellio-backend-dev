@@ -1010,6 +1010,29 @@ class AuthService {
                 };
             }
 
+            // SIMULATION: If bankCode is 001 (Test Bank), skip Paystack verification
+            if (bankData.bankCode !== '001') {
+                try {
+                    const paystack = require('../utils/paystack');
+                    console.log(chalk.blue(`→ Verifying account ${bankData.accountNumber} with bank ${bankData.bankCode}...`));
+                    const verification = await paystack.verifyAccountNumber(bankData.accountNumber, bankData.bankCode);
+
+                    if (!verification.status) {
+                        throw { status: 400, message: verification.message || 'Account verification failed' };
+                    }
+
+                    // Update account name with the one resolved from Paystack for consistency
+                    bankData.accountName = verification.data.account_name;
+                    console.log(chalk.green(`✓ Account resolved: ${bankData.accountName}`));
+                } catch (error) {
+                    console.error(chalk.red('✗ Bank account verification failed:'), error);
+                    throw {
+                        status: 400,
+                        message: `Bank verification failed: ${error.message || 'Please check your account details'}`
+                    };
+                }
+            }
+
             // Update bank information
             user.bankAccount = {
                 bankName: bankData.bankName,
