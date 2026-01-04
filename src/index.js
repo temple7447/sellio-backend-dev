@@ -19,7 +19,6 @@ const wishlistRoutes = require('./routes/wishlist.routes');
 const mediaRoutes = require('./routes/media.routes');
 const cleanupService = require('./services/cleanup.service');
 
-
 // Start background services
 cleanupService.start();
 

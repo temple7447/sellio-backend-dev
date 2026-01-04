@@ -557,7 +557,21 @@ class OrderService {
         }
 
         const orderObj = order.toObject();
-        orderObj.items = items;
+
+        // Filter items for sellers: only show items they own
+        if (user.role === 'seller') {
+            const sellerItems = items.filter(item => item.sellerId?._id.toString() === user._id.toString());
+            orderObj.items = sellerItems;
+
+            // Adjust totals for seller view to reflect only their items
+            const subtotal = sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            orderObj.totals = {
+                subtotal,
+                final: subtotal // For sellers, we show their portion of the total
+            };
+        } else {
+            orderObj.items = items;
+        }
 
         return orderObj;
     }

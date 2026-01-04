@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth, isAdmin } = require('../middleware/auth');
+const { auth, isAdmin, isStaff } = require('../middleware/auth');
 const walletController = require('../controllers/wallet.controller');
 
 /**
@@ -69,9 +69,9 @@ router.post('/debit', auth, isAdmin, walletController.debitWallet);
 /**
  * @route   POST /api/wallet/withdraw
  * @desc    Request a withdrawal
- * @access  Private (All authenticated users)
+ * @access  Private (Sellers and Admins only)
  */
-router.post('/withdraw', auth, walletController.requestWithdrawal);
+router.post('/withdraw', auth, isStaff, walletController.requestWithdrawal);
 
 /**
  * @route   POST /api/wallet/admin/withdrawals/:transactionId/approve

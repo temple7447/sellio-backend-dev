@@ -59,4 +59,11 @@ const isCustomer = async (req, res, next) => {
     next();
 };
 
-module.exports = { auth, isVerified, isSeller, isAdmin, isAdminVerified, isCustomer };
+const isStaff = async (req, res, next) => {
+    if (req.user.role !== 'seller' && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Withdrawal access restricted to sellers and admins.' });
+    }
+    next();
+};
+
+module.exports = { auth, isVerified, isSeller, isAdmin, isAdminVerified, isCustomer, isStaff };
