@@ -17,11 +17,14 @@ const accessLogStream = fs.createWriteStream(
 
 // Custom token for response body
 morgan.token('body', (req) => {
-    if (req.method === 'POST' || req.method === 'PUT') {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
         const sanitizedBody = { ...req.body };
         // Remove sensitive data
-        delete sanitizedBody.password;
-        delete sanitizedBody.token;
+        if (sanitizedBody.password) sanitizedBody.password = '***';
+        if (sanitizedBody.token) sanitizedBody.token = '***';
+        if (sanitizedBody.oldPassword) sanitizedBody.oldPassword = '***';
+        if (sanitizedBody.newPassword) sanitizedBody.newPassword = '***';
+
         return JSON.stringify(sanitizedBody);
     }
     return '';
@@ -30,15 +33,14 @@ morgan.token('body', (req) => {
 // Custom format
 const morganFormat = ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms :body';
 
-// Development logger
+// Development logger - log all requests
 const devLogger = morgan(morganFormat, {
-    skip: (req, res) => res.statusCode < 400,
     stream: {
         write: (message) => console.log(chalk.cyan(`➜ ${message.trim()}`))
     }
 });
 
-// Production logger
+// Production logger - log errors
 const prodLogger = morgan(morganFormat, {
     skip: (req, res) => res.statusCode < 400,
     stream: accessLogStream

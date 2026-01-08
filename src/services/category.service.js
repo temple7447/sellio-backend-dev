@@ -2,6 +2,7 @@ const MarketCategory = require('../models/MarketCategory');
 const MarketProduct = require('../models/MarketProduct'); // Add this import
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const chalk = require('chalk');
+const mongoose = require('mongoose'); // Add this import
 
 class CategoryService {
     // Category to Unsplash image mapping
@@ -92,18 +93,21 @@ class CategoryService {
 
     async getAllCategories(query = {}) {
         try {
-            const { page = 1, limit = 20, isActive, sort = 'order' } = query;
+            const { page = 1, limit = 20, sortBy = 'order', order = 'asc', isActive, hideEmpty } = query;
             const skip = (page - 1) * limit;
+            const sort = { [sortBy]: order === 'asc' ? 1 : -1 };
 
-            // Build filter
             const filter = {};
             if (isActive !== undefined) {
                 filter.isActive = isActive === 'true';
             }
 
-            // Filter out categories without active products
-            const activeCategoryIds = await MarketProduct.distinct('category', { status: 'active' });
-            filter._id = { $in: activeCategoryIds };
+            // By default, show all categories
+            // If hideEmpty=true is provided, filter out categories without active products
+            if (hideEmpty === 'true') {
+                const activeCategoryIds = await MarketProduct.distinct('category', { status: 'active' });
+                filter._id = { $in: activeCategoryIds };
+            }
 
             // Get categories with pagination
             const [categories, total] = await Promise.all([
@@ -270,11 +274,15 @@ class CategoryService {
 
     async createCategory(categoryData, imageFile) {
         try {
-            const { name } = categoryData;
+            const { name, parent } = categoryData;
+            const trimmedName = name.trim();
+
+            // Handle empty parent string from frontend
+            if (parent === '') categoryData.parent = null;
 
             // Check for existing category
             const existingCategory = await MarketCategory.findOne({
-                name: { $regex: new RegExp(`^${name}$`, 'i') }
+                name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }
             });
 
             if (existingCategory) {
@@ -297,12 +305,21 @@ class CategoryService {
             // Create new category with image
             const category = new MarketCategory({
                 ...categoryData,
-                slug: MarketCategory.generateSlug(name),
+                name: trimmedName,
+                slug: MarketCategory.generateSlug(trimmedName),
                 image: imageUrl
             });
 
             return await category.save();
         } catch (error) {
+            // Handle MongoDB duplicate key errors (e.g., if the manual check and save race)
+            if (error.code === 11000) {
+                throw {
+                    status: 400,
+                    message: 'Category with this name already exists'
+                };
+            }
+
             if (error.status) {
                 throw error;
             }
@@ -314,8 +331,71 @@ class CategoryService {
         }
     }
 
+    async updateCategory(categoryId, updates, imageFile) {
+        try {
+            const category = await MarketCategory.findById(categoryId);
+            if (!category) {
+                throw { status: 404, message: 'Category not found' };
+            }
+
+            // Handle empty parent string from frontend
+            if (updates.parent === '') updates.parent = null;
+
+            // If name is being updated, regenerate slug
+            if (updates.name && updates.name.trim() !== category.name) {
+                const trimmedName = updates.name.trim();
+                // Check if new name already exists
+                const existing = await MarketCategory.findOne({
+                    name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+                    _id: { $ne: categoryId }
+                });
+                if (existing) {
+                    throw { status: 400, message: 'Category with this name already exists' };
+                }
+                updates.name = trimmedName;
+                updates.slug = MarketCategory.generateSlug(trimmedName);
+            }
+
+            // Handle image update
+            if (imageFile) {
+                const result = await uploadToCloudinary(imageFile, 'categories');
+                if (!result || !result.secure_url) {
+                    throw { status: 500, message: 'Failed to upload category image' };
+                }
+                updates.image = result.secure_url;
+            }
+
+            // Apply updates
+            Object.assign(category, updates);
+            return await category.save();
+        } catch (error) {
+            // Handle MongoDB duplicate key errors
+            if (error.code === 11000) {
+                throw {
+                    status: 400,
+                    message: 'Category with this name already exists'
+                };
+            }
+
+            if (error.status) throw error;
+            throw {
+                status: 500,
+                message: 'Failed to update category',
+                error: error.message
+            };
+        }
+    }
+
     async deleteCategory(categoryId) {
         try {
+            // Validate ObjectId
+            if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+                throw {
+                    status: 400,
+                    message: `Invalid Category ID: ${categoryId}`
+                };
+            }
+
             // Check if category exists
             const category = await MarketCategory.findById(categoryId);
             if (!category) {

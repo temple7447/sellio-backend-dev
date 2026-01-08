@@ -7,7 +7,7 @@ class CategoryController {
             const categories = await categoryService.getAllCategories(req.query);
             res.json(categories);
         } catch (error) {
-            console.error(chalk.red('✗ Categories fetch failed:', error));
+            console.error(chalk.red('✗ Categories fetch failed:'), error);
             res.status(500).json({ message: error.message });
         }
     }
@@ -18,12 +18,23 @@ class CategoryController {
             console.log(chalk.green('✓ Category created:', category.name));
             res.status(201).json(category);
         } catch (error) {
-            console.error(chalk.red('✗ Category creation failed:', error));
+            console.error(chalk.red('✗ Category creation failed:'), error);
             res.status(error.status || 400).json({ message: error.message });
         }
     }
 
 
+
+    async updateCategory(req, res) {
+        try {
+            const category = await categoryService.updateCategory(req.params.id, req.body, req.file);
+            console.log(chalk.blue('✓ Category updated:', category.name));
+            res.json(category);
+        } catch (error) {
+            console.error(chalk.red('✗ Category update failed:'), error);
+            res.status(error.status || 400).json({ message: error.message });
+        }
+    }
 
     async deleteCategory(req, res) {
         try {
@@ -31,7 +42,7 @@ class CategoryController {
             console.log(chalk.yellow(`✓ Category deleted: ${result.data.name}`));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Category deletion failed:', error));
+            console.error(chalk.red('✗ Category deletion failed:'), error);
             res.status(error.status || 500).json({
                 success: false,
                 message: error.message

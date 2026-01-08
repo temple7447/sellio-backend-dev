@@ -10,11 +10,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/', categoryController.getAllCategories);
 
 
-
-
-
 router.post('/', auth, isAdmin, upload.single('image'), categoryController.createCategory);
 
+router.patch('/:id', auth, isAdmin, upload.single('image'), categoryController.updateCategory);
 
 router.delete('/:id', auth, isAdmin, categoryController.deleteCategory);
 
