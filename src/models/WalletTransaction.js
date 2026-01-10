@@ -47,7 +47,7 @@ const walletTransactionSchema = new mongoose.Schema({
     },
     paymentGateway: {
         type: String,
-        enum: ['paystack', 'manual', 'system'],
+        enum: ['paystack', 'manual', 'system', 'wallet'],
         default: 'system'
     },
     status: {

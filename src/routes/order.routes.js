@@ -39,9 +39,22 @@ router.get('/customer/:orderId/status', auth, orderController.getOrderStatus);
 
 
 router.post('/customer/:orderId/pay', auth, orderController.initializeCustomerPayment);
+router.post('/customer/:orderId/pay-wallet', auth, orderController.payWithWallet);
 
 // Customer confirms they have received the order
 router.post('/customer/:orderId/confirm-receipt', auth, upload.single('proof'), orderController.confirmReceipt);
+
+// Cancellation routes
+router.post('/customer/:orderId/cancel', auth, orderController.cancelOrder);
+router.post('/customer/item/:orderItemId/cancel', auth, orderController.cancelOrderItem);
+router.post('/seller/item/:orderItemId/cancel', auth, isSeller, orderController.cancelOrderItem);
+
+// Complaint routes
+router.post('/:orderId/complain', auth, upload.array('images', 5), orderController.fileComplaint);
+
+// Admin Complaint Management
+router.get('/admin/complaints', auth, isAdmin, orderController.getAllComplaints);
+router.post('/admin/complaints/:complaintId/resolve', auth, isAdmin, orderController.resolveOrderComplaint);
 
 router.get('/seller', auth, isSeller, orderController.getSellerOrders);
 

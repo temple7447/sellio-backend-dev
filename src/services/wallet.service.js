@@ -114,27 +114,41 @@ class WalletService {
         const balanceBefore = balanceAfter + amount;
 
         // Record transaction
-        const transaction = await WalletTransaction.create({
-            userId,
-            type: metadata.type || 'payment',
-            amount,
-            balanceBefore,
-            balanceAfter,
-            reference: metadata.reference || this.generateReference(),
-            description,
-            status: metadata.status || 'completed',
-            paymentGateway: metadata.paymentGateway || 'system',
-            relatedOrder: metadata.relatedOrder || null,
-            metadata
-        });
+        try {
+            const transaction = await WalletTransaction.create({
+                userId,
+                type: metadata.type || 'payment',
+                amount,
+                balanceBefore,
+                balanceAfter,
+                reference: metadata.reference || this.generateReference(),
+                description,
+                status: metadata.status || 'completed',
+                paymentGateway: metadata.paymentGateway || 'system',
+                relatedOrder: metadata.relatedOrder || null,
+                metadata
+            });
 
-        console.log(chalk.blue(`→ Wallet debited: ${amount} NGN from user ${userId}`));
+            console.log(chalk.blue(`→ Wallet debited: ${amount} NGN from user ${userId}`));
 
-        return {
-            balanceBefore,
-            balanceAfter,
-            transaction
-        };
+            return {
+                balanceBefore,
+                balanceAfter,
+                transaction
+            };
+        } catch (error) {
+            // Rollback the atomic balance deduction if transaction log fails
+            console.error(chalk.red('✗ Wallet transaction logging failed, rolling back balance:'), error);
+            await MarketWallet.findOneAndUpdate(
+                { userId },
+                { $inc: { balance: amount } }
+            );
+            throw {
+                status: 500,
+                message: 'Internal transaction error. Please try again.',
+                details: error.message
+            };
+        }
     }
 
     /**

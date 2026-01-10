@@ -33,7 +33,7 @@ const orderItemSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+        enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded', 'disputed'],
         default: 'pending',
         index: true
     },
@@ -51,6 +51,15 @@ const orderItemSchema = new mongoose.Schema({
     },
     buyerConfirmationDate: {
         type: Date,
+        default: null
+    },
+    cancellationReason: {
+        type: String,
+        default: null
+    },
+    cancelledBy: {
+        type: String,
+        enum: ['customer', 'seller', 'admin', 'system', null],
         default: null
     }
 }, {

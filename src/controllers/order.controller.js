@@ -251,6 +251,149 @@ class OrderController {
             res.status(error.status || 500).json({ message: error.message });
         }
     }
+
+    async payWithWallet(req, res) {
+        try {
+            const result = await orderService.payWithWallet(req.user._id, req.params.orderId);
+            console.log(chalk.green(`✓ Order paid with wallet: ${req.params.orderId}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Wallet payment failed:'), error);
+            res.status(error.status || 400).json({
+                message: error.message,
+                available: error.available,
+                required: error.required
+            });
+        }
+    }
+
+    async cancelOrder(req, res) {
+        try {
+            const { reason } = req.body;
+            if (!reason) {
+                return res.status(400).json({ message: 'Cancellation reason is required' });
+            }
+
+            const result = await orderService.cancelOrder(req.user._id, req.params.orderId, reason);
+            console.log(chalk.green(`✓ Order ${req.params.orderId} cancellation processed by customer ${req.user._id}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Order cancellation failed:'), error);
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async cancelOrderItem(req, res) {
+        try {
+            const { reason } = req.body;
+            if (!reason) {
+                return res.status(400).json({ message: 'Cancellation reason is required' });
+            }
+
+            // Determine role for authorization
+            const role = req.user.role === 'seller' ? 'seller' : 'customer';
+
+            const result = await orderService.cancelOrderItem(
+                req.user._id,
+                req.params.orderItemId,
+                reason,
+                role
+            );
+
+            console.log(chalk.green(`✓ Item ${req.params.orderItemId} cancelled by ${role} ${req.user._id}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Item cancellation failed:'), error);
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async fileComplaint(req, res) {
+        try {
+            const { subject, complaint, orderItemId } = req.body;
+            const orderId = req.params.orderId;
+
+            if (!subject || !complaint) {
+                return res.status(400).json({ message: 'Subject and complaint are required' });
+            }
+
+            const complaintData = {
+                orderId,
+                orderItemId,
+                subject,
+                complaint,
+                role: req.user.role // 'customer', 'seller', or 'admin'
+            };
+
+            const result = await orderService.fileComplaint(req.user._id, complaintData, req.files || []);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Filing complaint failed:'), error);
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async resolveOrderComplaint(req, res) {
+        try {
+            const { decision, resolution } = req.body;
+            const complaintId = req.params.complaintId;
+
+            if (!decision || !resolution) {
+                return res.status(400).json({ message: 'Decision and resolution text are required' });
+            }
+
+            const result = await orderService.resolveComplaint(req.user._id, complaintId, decision, resolution);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Resolving complaint failed:'), error);
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async getAllComplaints(req, res) {
+        try {
+            const MarketOrderComplain = require('../models/MarketOrderComplain');
+            const { status } = req.query;
+
+            const query = {};
+            if (status) {
+                query.status = status;
+            }
+
+            const complaints = await MarketOrderComplain.find(query)
+                .sort({ createdAt: -1 })
+                .populate('userId', 'fullName email')
+                .populate('orderId', 'status totals guestEmail');
+
+            // Get counts for summary
+            const counts = await MarketOrderComplain.aggregate([
+                { $group: { _id: '$status', count: { $sum: 1 } } }
+            ]);
+
+            const summary = {
+                all: 0,
+                pending: 0,
+                'in-review': 0,
+                resolved: 0,
+                dismissed: 0
+            };
+
+            counts.forEach(c => {
+                summary[c._id] = c.count;
+                summary.all += c.count;
+            });
+
+            res.json({
+                success: true,
+                count: complaints.length,
+                summary,
+                data: complaints
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ Fetching complaints failed:'), error);
+            res.status(500).json({ message: 'Internal server error' });
+        }
+    }
 }
 
 module.exports = new OrderController();

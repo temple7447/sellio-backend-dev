@@ -18,7 +18,7 @@ const orderSchema = new mongoose.Schema({
     // Data is stored in MarketOrderItem collection for better scalability.
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
+        enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'disputed'],
         default: 'pending'
     },
     payment: {
@@ -61,6 +61,15 @@ const orderSchema = new mongoose.Schema({
         shipping: Number,
         discount: Number,
         final: Number
+    },
+    cancellationReason: {
+        type: String,
+        default: null
+    },
+    cancelledBy: {
+        type: String,
+        enum: ['customer', 'seller', 'admin', 'system', null],
+        default: null
     }
 }, {
     timestamps: true,

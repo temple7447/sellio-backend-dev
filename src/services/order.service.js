@@ -104,7 +104,7 @@ class OrderService {
 
     async createCustomerOrder(customerId, orderData) {
         try {
-            const { items, shippingDetails } = orderData; // Changed from deliveryInfo to shippingDetails
+            const { items, shippingDetails, paymentMethod = 'paystack' } = orderData;
 
             if (!shippingDetails) {
                 throw {
@@ -177,7 +177,7 @@ class OrderService {
                 customerId,
                 status: 'pending',
                 payment: {
-                    method: 'paystack',
+                    method: paymentMethod,
                     status: 'pending'
                 },
                 shipping: {
@@ -824,7 +824,7 @@ class OrderService {
 
         // Release funds to each seller in the order
         for (const item of orderItems) {
-            if (item.status !== 'delivered' && item.status !== 'cancelled') {
+            if (item.status !== 'delivered' && item.status !== 'cancelled' && item.status !== 'disputed') {
                 // IMPORTANT: Only release funds if BOTH seller and buyer have provided proof
                 if (!item.fulfillmentProof || !item.buyerProof) {
                     const missing = [];
@@ -1202,6 +1202,612 @@ class OrderService {
             console.error('Admin orders fetch error:', error);
             throw { status: 500, message: 'Failed to fetch orders', details: error.message };
         }
+    }
+
+    async payWithWallet(customerId, orderId) {
+        try {
+            const order = await MarketOrder.findOne({
+                _id: orderId,
+                customerId,
+                'payment.status': 'pending'
+            });
+
+            if (!order) {
+                throw {
+                    status: 404,
+                    message: 'Order not found or payment already processed'
+                };
+            }
+
+            // Deduct from wallet
+            const walletService = require('./wallet.service');
+            const amount = order.totals.final;
+
+            const debitResult = await walletService.debit(
+                customerId,
+                amount,
+                `Payment for order ${order._id}`,
+                {
+                    type: 'payment',
+                    status: 'completed',
+                    paymentGateway: 'wallet',
+                    relatedOrder: order._id
+                }
+            );
+
+            // Complete fulfillment logic
+            await this._completeOrderFulfillment(order, {
+                gateway: 'wallet',
+                transactionId: debitResult.transaction.reference,
+                channel: 'wallet',
+                paidAt: new Date(),
+                metadata: {
+                    transactionId: debitResult.transaction._id
+                }
+            });
+
+            return {
+                success: true,
+                message: 'Payment completed successfully using wallet',
+                order: {
+                    id: order._id,
+                    status: order.status,
+                    payment: order.payment
+                },
+                wallet: {
+                    balanceAfter: debitResult.balanceAfter,
+                    transactionId: debitResult.transaction._id
+                }
+            };
+        } catch (error) {
+            console.error(chalk.red('✗ Wallet payment failed:'), error);
+            throw {
+                status: error.status || 500,
+                message: error.message || 'Wallet payment failed',
+                available: error.available,
+                required: error.required
+            };
+        }
+    }
+
+    /**
+     * Shared fulfillment logic to be run after any successful payment
+     * @private
+     */
+    async _completeOrderFulfillment(order, paymentInfo) {
+        // Update order status and payment details
+        order.status = 'confirmed';
+        order.payment.status = 'completed';
+        order.payment.method = paymentInfo.gateway;
+        order.payment.transactionId = paymentInfo.transactionId;
+        order.payment.metadata = {
+            gateway: paymentInfo.gateway,
+            channel: paymentInfo.channel,
+            paidAt: paymentInfo.paidAt || new Date(),
+            ...paymentInfo.metadata
+        };
+
+        await order.save();
+
+        // Update inventory and item statuses
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const orderItems = await MarketOrderItem.find({ orderId: order._id }).populate('productId');
+
+        for (const item of orderItems) {
+            await MarketProduct.findByIdAndUpdate(
+                item.productId,
+                {
+                    $inc: {
+                        'inventory.quantity': -item.quantity,
+                        'metadata.sales': item.quantity
+                    }
+                }
+            );
+            // Update item status to confirmed
+            item.status = 'confirmed';
+            await item.save();
+        }
+
+        // Send receipt email to buyer
+        try {
+            const { sendOrderReceiptEmail } = require('../utils/email');
+
+            // Robustly determine recipient email
+            let recipientEmail = order.shipping?.address?.email || order.guestEmail;
+
+            if (!recipientEmail && order.customerId) {
+                const { MarketUser } = require('../models/MarketUser');
+                const user = await MarketUser.findById(order.customerId);
+                if (user) {
+                    recipientEmail = user.email;
+                }
+            }
+
+            if (recipientEmail) {
+                await sendOrderReceiptEmail(recipientEmail, order, orderItems);
+            } else {
+                console.warn(chalk.yellow('⚠ Could not find recipient email for order receipt:', order._id));
+            }
+        } catch (error) {
+            console.error(chalk.yellow('⚠ Failed to send order receipt email:', error.message));
+        }
+
+        // Calculate and credit cashback based on configurable settings
+        try {
+            const walletService = require('./wallet.service');
+            const RewardSettings = require('../models/RewardSettings');
+
+            // Get current reward settings
+            const settings = await RewardSettings.getSettings();
+
+            // Check if cashback is enabled
+            if (settings.cashback.enabled && settings.cashback.amount > 0) {
+                const cashbackRewards = [];
+
+                // Get product details to check prices against minimum purchase
+                for (const item of orderItems) {
+                    const product = await MarketProduct.findById(item.productId);
+                    if (product && product.price.current >= settings.cashback.minimumPurchase) {
+                        cashbackRewards.push({
+                            productName: product.name,
+                            productPrice: product.price.current,
+                            cashback: settings.cashback.amount
+                        });
+                    }
+                }
+
+                // Credit total cashback if any qualifying products
+                if (cashbackRewards.length > 0 && order.customerId) {
+                    const totalCashback = cashbackRewards.length * settings.cashback.amount;
+                    await walletService.credit(
+                        order.customerId,
+                        totalCashback,
+                        `Cashback for order ${order._id}`,
+                        {
+                            type: 'cashback',
+                            relatedOrder: order._id,
+                            metadata: { items: cashbackRewards }
+                        }
+                    );
+                }
+            }
+        } catch (error) {
+            console.error(chalk.yellow('⚠ Failed to process cashback bonus:', error.message));
+        }
+
+        // Process referral bonus for the buyer's referrer
+        try {
+            const { MarketUser } = require('../models/MarketUser');
+            const walletService = require('./wallet.service');
+            const RewardSettings = require('../models/RewardSettings');
+
+            const settings = await RewardSettings.getSettings();
+
+            if (settings.referralBonus.enabled && order.customerId) {
+                const customer = await MarketUser.findById(order.customerId);
+                if (customer && customer.referredBy) {
+                    const Referral = require('../models/Referral');
+                    const referral = await Referral.findOne({
+                        referredUserId: customer._id,
+                        referrerId: customer.referredBy,
+                        status: 'pending'
+                    });
+
+                    if (referral) {
+                        const referrer = await MarketUser.findById(customer.referredBy);
+                        if (referrer) {
+                            // Only verified sellers get referral bonuses in this system (adjust if needed)
+                            if (referrer.role === 'seller' && referrer.isVerified) {
+                                const result = await walletService.credit(
+                                    referrer._id,
+                                    settings.referralBonus.amount,
+                                    `Referral bonus for ${customer.fullName}'s purchase`,
+                                    {
+                                        type: 'referral_bonus',
+                                        relatedOrder: order._id,
+                                        metadata: {
+                                            referredUserId: customer._id,
+                                            referredUserEmail: customer.email,
+                                            orderId: order._id
+                                        }
+                                    }
+                                );
+
+                                referral.status = 'bonus_paid';
+                                referral.bonusAmount = settings.referralBonus.amount;
+                                referral.transactionId = result.transaction._id;
+                                referral.completionDate = new Date();
+                                await referral.save();
+
+                                console.log(chalk.green(`✓ Referral bonus of ₦${settings.referralBonus.amount} paid to ${referrer.email}`));
+                            } else {
+                                console.log(chalk.yellow(`→ Referrer ${referrer?.email} is not eligible for bonus (unverified seller)`));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(chalk.yellow('⚠ Failed to process referral bonus:', error.message));
+        }
+    }
+
+    /**
+     * Cancel a specific order item
+     * @param {string} userId - ID of the user performing the cancellation (Customer or Seller)
+     * @param {string} orderItemId - ID of the item to cancel
+     * @param {string} reason - Reason for cancellation
+     * @param {string} role - 'customer' or 'seller'
+     */
+    async cancelOrderItem(userId, orderItemId, reason, role) {
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const walletService = require('./wallet.service');
+
+        const item = await MarketOrderItem.findById(orderItemId);
+        if (!item) {
+            throw { status: 404, message: 'Order item not found' };
+        }
+
+        const order = await MarketOrder.findById(item.orderId);
+        if (!order) {
+            throw { status: 404, message: 'Parent order not found' };
+        }
+
+        // Authorization check
+        if (role === 'customer') {
+            if (order.customerId.toString() !== userId.toString()) {
+                throw { status: 403, message: 'You are not authorized to cancel this item' };
+            }
+        } else if (role === 'seller') {
+            if (item.sellerId.toString() !== userId.toString()) {
+                throw { status: 403, message: 'You are not authorized to cancel this item' };
+            }
+        }
+
+        // Status check
+        if (['shipped', 'delivered', 'cancelled', 'refunded'].includes(item.status)) {
+            throw { status: 400, message: `Cannot cancel item with status: ${item.status}` };
+        }
+
+        // Additional security check: If buyer has already provided proof of receipt, they cannot cancel
+        if (role === 'customer' && item.buyerProof) {
+            throw { status: 400, message: 'Cannot cancel item after you have confirmed receipt' };
+        }
+
+        // 1. Refund the buyer if order was paid
+        if (order.payment.status === 'completed') {
+            console.log(chalk.blue(`→ Refunding customer (${order.customerId}) for cancelled item ${item._id}`));
+            await walletService.credit(
+                order.customerId,
+                item.totalPrice,
+                `Refund for cancelled item: ${item._id} (Order: ${order._id})`,
+                {
+                    type: 'refund',
+                    relatedOrder: order._id,
+                    metadata: {
+                        orderItemId: item._id,
+                        reason,
+                        cancelledBy: role
+                    }
+                }
+            );
+        }
+
+        // 2. Restock inventory
+        await MarketProduct.findByIdAndUpdate(
+            item.productId,
+            {
+                $inc: {
+                    'inventory.quantity': item.quantity,
+                    'metadata.sales': -item.quantity
+                }
+            }
+        );
+
+        // 3. Update item status
+        item.status = 'cancelled';
+        item.cancellationReason = reason;
+        item.cancelledBy = role;
+        await item.save();
+
+        // 4. Check if all items in the order are now cancelled
+        const activeItemsCount = await MarketOrderItem.countDocuments({
+            orderId: order._id,
+            status: { $ne: 'cancelled' }
+        });
+
+        if (activeItemsCount === 0) {
+            // IF THIS WAS THE LAST ITEM, refund any remaining bits of the order total (fees, shipping etc)
+            if (order.payment.status === 'completed') {
+                const WalletTransaction = require('../models/WalletTransaction');
+                const previousRefunds = await WalletTransaction.find({
+                    relatedOrder: order._id,
+                    type: 'refund'
+                });
+
+                const totalRefunded = previousRefunds.reduce((sum, tx) => sum + tx.amount, 0);
+                const remainder = order.totals.final - totalRefunded;
+
+                if (remainder > 1) { // Use 1 to avoid tiny floating point dust
+                    console.log(chalk.blue(`→ Refunding remaining fees (${remainder}) for fully cancelled order ${order._id}`));
+                    await walletService.credit(
+                        order.customerId,
+                        remainder,
+                        `Final refund (fees/shipping) for fully cancelled order: ${order._id}`,
+                        {
+                            type: 'refund',
+                            relatedOrder: order._id,
+                            metadata: {
+                                reason: 'Order fully cancelled',
+                                cancelledBy: role
+                            }
+                        }
+                    );
+                }
+            }
+
+            order.status = 'cancelled';
+            order.cancellationReason = reason;
+            order.cancelledBy = role;
+            await order.save();
+        }
+
+        console.log(chalk.green(`✓ Item ${item._id} cancelled by ${role}. Reason: ${reason}`));
+
+        return {
+            success: true,
+            message: 'Item cancelled and refund processed',
+            itemStatus: item.status,
+            orderStatus: order.status
+        };
+    }
+
+    /**
+     * Cancel an entire order (Customer only)
+     */
+    async cancelOrder(customerId, orderId, reason) {
+        const order = await MarketOrder.findOne({ _id: orderId, customerId });
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        if (order.status === 'cancelled') {
+            return { success: true, message: 'Order is already cancelled' };
+        }
+
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const items = await MarketOrderItem.find({ orderId: order._id });
+
+        const results = [];
+        for (const item of items) {
+            if (!['shipped', 'delivered', 'cancelled', 'refunded'].includes(item.status)) {
+                try {
+                    const result = await this.cancelOrderItem(customerId, item._id, reason, 'customer');
+                    results.push({ itemId: item._id, status: 'success', detail: result });
+                } catch (error) {
+                    results.push({ itemId: item._id, status: 'failed', error: error.message });
+                }
+            } else {
+                results.push({ itemId: item._id, status: 'skipped', message: `Item is already ${item.status}` });
+            }
+        }
+
+        // Final status sync
+        const remainingActive = await MarketOrderItem.countDocuments({
+            orderId: order._id,
+            status: { $ne: 'cancelled' }
+        });
+
+        if (remainingActive === 0) {
+            order.status = 'cancelled';
+            order.cancellationReason = reason;
+            order.cancelledBy = 'customer';
+            await order.save();
+        }
+
+        const successCount = results.filter(r => r.status === 'success').length;
+        if (successCount === 0) {
+            const lastError = results.find(r => r.status === 'failed')?.error || 'No items were eligible for cancellation';
+            throw { status: 400, message: lastError, results };
+        }
+
+        return {
+            success: true,
+            message: `Successfully cancelled ${successCount} item(s)`,
+            results,
+            orderStatus: order.status
+        };
+    }
+
+    /**
+     * File a complaint for an order or specific item
+     */
+    async fileComplaint(userId, complaintData, files = []) {
+        const MarketOrderComplain = require('../models/MarketOrderComplain');
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const { uploadToCloudinary } = require('../utils/cloudinary');
+
+        const { orderId, orderItemId, subject, complaint, role } = complaintData;
+
+        // 1. Basic Validation
+        const order = await MarketOrder.findById(orderId);
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        // 2. Role-based Authorization
+        if (role === 'customer') {
+            if (order.customerId?.toString() !== userId.toString()) {
+                throw { status: 403, message: 'You are not authorized to file a complaint for this order' };
+            }
+        } else if (role === 'seller') {
+            // Check if user is a seller for any item in this order
+            const items = await MarketOrderItem.find({ orderId: order._id, sellerId: userId });
+            if (items.length === 0) {
+                throw { status: 403, message: 'You are not authorized to file a complaint for this order' };
+            }
+        } else if (role !== 'admin') {
+            throw { status: 400, message: 'Invalid role for complaint' };
+        }
+
+        // 3. Handle image uploads
+        const imagePromises = files.map(file => uploadToCloudinary(file, 'order_complaints'));
+        const uploadResults = await Promise.all(imagePromises);
+        const imageUrls = uploadResults.map(res => res.secure_url);
+
+        // 4. Create Complaint
+        const newComplaint = new MarketOrderComplain({
+            orderId,
+            orderItemId,
+            userId,
+            role,
+            subject,
+            complaint,
+            images: imageUrls,
+            status: 'pending'
+        });
+
+        await newComplaint.save();
+
+        // 5. Update Status to 'disputed'
+        if (orderItemId) {
+            await MarketOrderItem.findByIdAndUpdate(orderItemId, { status: 'disputed' });
+        } else {
+            // If it's a general order complaint, mark the whole order
+            order.status = 'disputed';
+            await order.save();
+        }
+
+        console.log(chalk.green(`✓ Complaint filed for order ${orderId} by ${role} ${userId}. Status set to 'disputed'.`));
+
+        return {
+            success: true,
+            message: 'Complaint filed successfully. The affected items are now marked as "disputed".',
+            data: newComplaint
+        };
+    }
+
+    /**
+     * Resolve a filed complaint
+     * @param {string} adminId - ID of the admin resolving the complaint
+     * @param {string} complaintId - ID of the complaint record
+     * @param {string} decision - 'refund_customer', 'release_to_seller', or 'dismiss'
+     * @param {string} resolutionText - Additional details from the admin
+     */
+    async resolveComplaint(adminId, complaintId, decision, resolutionText) {
+        const MarketOrderComplain = require('../models/MarketOrderComplain');
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const walletService = require('./wallet.service');
+
+        const complaint = await MarketOrderComplain.findById(complaintId);
+        if (!complaint) {
+            throw { status: 404, message: 'Complaint not found' };
+        }
+
+        if (complaint.status !== 'pending' && complaint.status !== 'in-review') {
+            throw { status: 400, message: `Complaint is already ${complaint.status}` };
+        }
+
+        const order = await MarketOrder.findById(complaint.orderId);
+        const item = complaint.orderItemId ? await MarketOrderItem.findById(complaint.orderItemId) : null;
+
+        // Process Decision
+        if (decision === 'refund_customer') {
+            // Case 1: Refund for specific item
+            if (item) {
+                if (order.payment.status === 'completed') {
+                    await walletService.credit(
+                        complaint.userId, // This assumes user who complained IS the customer if it's a refund
+                        item.totalPrice,
+                        `Refund for resolved dispute: ${complaintId}`,
+                        { type: 'refund', relatedOrder: order._id, metadata: { complaintId } }
+                    );
+                }
+                item.status = 'refunded';
+                await item.save();
+            } else {
+                // Case 2: Refund for whole order
+                if (order.payment.status === 'completed') {
+                    await walletService.credit(
+                        order.customerId,
+                        order.totals.final,
+                        `Full Order Refund for resolved dispute: ${complaintId}`,
+                        { type: 'refund', relatedOrder: order._id, metadata: { complaintId } }
+                    );
+                }
+                order.status = 'cancelled';
+                await order.save();
+                // Also mark items as cancelled/refunded
+                await MarketOrderItem.updateMany({ orderId: order._id }, { status: 'refunded' });
+            }
+        } else if (decision === 'release_to_seller') {
+            // Case: Release funds to seller
+            if (item) {
+                await walletService.credit(
+                    item.sellerId,
+                    item.totalPrice,
+                    `Payment released after dispute resolution: ${complaintId}`,
+                    { type: 'earning', relatedOrder: order._id, metadata: { complaintId } }
+                );
+                item.status = 'delivered';
+                await item.save();
+            } else {
+                // If whole order release (unlikely but possible), credit all items
+                const orderItems = await MarketOrderItem.find({ orderId: order._id });
+                for (const oi of orderItems) {
+                    if (oi.status === 'disputed') {
+                        await walletService.credit(
+                            oi.sellerId,
+                            oi.totalPrice,
+                            `Payment released after dispute resolution: ${complaintId}`,
+                            { type: 'earning', relatedOrder: order._id, metadata: { complaintId } }
+                        );
+                        oi.status = 'delivered';
+                        await oi.save();
+                    }
+                }
+                order.status = 'delivered';
+                await order.save();
+            }
+        } else if (decision === 'dismiss') {
+            // Simply mark as resolved, return item to shipped/processing or delivered
+            if (item) {
+                item.status = 'delivered'; // Return to delivered so funds can be processed normally or kept
+                await item.save();
+            } else {
+                order.status = 'delivered';
+                await order.save();
+            }
+        } else {
+            throw { status: 400, message: 'Invalid resolution decision' };
+        }
+
+        // Final Status Sync
+        if (order) {
+            const activeItems = await MarketOrderItem.countDocuments({
+                orderId: order._id,
+                status: { $nin: ['delivered', 'cancelled', 'refunded'] }
+            });
+            if (activeItems === 0 && order.status === 'disputed') {
+                order.status = 'delivered';
+                await order.save();
+            }
+        }
+
+        // Update Complaint Document
+        complaint.status = 'resolved';
+        complaint.resolution = resolutionText;
+        complaint.resolvedBy = adminId;
+        complaint.resolvedAt = new Date();
+        await complaint.save();
+
+        console.log(chalk.green(`✓ Dispute ${complaintId} resolved by admin ${adminId}. Decision: ${decision}`));
+
+        return {
+            success: true,
+            message: `Dispute resolved with decision: ${decision}`,
+            complaintStatus: complaint.status
+        };
     }
 }
 
