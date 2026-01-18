@@ -14,6 +14,10 @@ const marketOTPSchema = new mongoose.Schema({
         enum: ['seller', 'admin', 'customer'],  // Add 'customer' to valid types
         required: true
     },
+    sectionId: {
+        type: String,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now,

@@ -10,6 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post('/register/seller', upload.single('governmentId'), authController.registerSeller);
 router.post('/verify-otp', authController.verifyOTP);
 router.post('/login', authController.login);
+router.post('/admin/verify-login', authController.verifyAdminLoginOTP);
 router.get('/profile', auth, authController.getProfile);
 router.patch('/profile/seller', auth, isSeller, upload.single('governmentId'), async (req, res) => {
     try {

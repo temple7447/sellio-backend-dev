@@ -36,8 +36,8 @@ async function populateData() {
 
         // 1.5 Create Super Admin
         const adminData = {
-            email: 'starukido@gmail.com',
-            password: 'admin',
+            email: 'selliomarketplaces@gmail.com',
+            password: 'Sellio123@',
             fullName: 'Super Admin',
             phoneNumber: '0000000000',
             role: 'admin',

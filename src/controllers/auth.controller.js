@@ -38,11 +38,23 @@ class AuthController {
     async login(req, res) {
         try {
             const result = await authService.login(req.body);
-            console.log(chalk.green(`✓ ${result.user.role} logged in successfully`));
+            const message = result.requiresOTP ? 'Admin verification required' : `${result.user.role} logged in successfully`;
+            console.log(chalk.green(`✓ ${message}`));
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Login failed:', error));
             res.status(400).json({ message: error.message });
+        }
+    }
+
+    async verifyAdminLoginOTP(req, res) {
+        try {
+            const result = await authService.verifyAdminLoginOTP(req.body);
+            console.log(chalk.green('✓ Admin login verified successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin login verification failed:', error));
+            res.status(error.status || 400).json({ message: error.message });
         }
     }
 

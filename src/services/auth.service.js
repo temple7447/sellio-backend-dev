@@ -327,23 +327,50 @@ class AuthService {
             throw { status: 403, message: 'This account has been deleted' };
         }
 
-        // Generate token
-        const token = jwt.sign(
+        // Admin 2FA Flow
+        if (user.role === 'admin') {
+            const otp = this.generateOTP();
+            const sectionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+            // Delete old OTPs for this admin
+            await MarketOTP.deleteMany({ email, userType: 'admin' });
+
+            await new MarketOTP({ email, otp, userType: 'admin', sectionId }).save();
+            await sendOTP(email, otp);
+
+            return {
+                requiresOTP: true,
+                sectionId,
+                role: 'admin',
+                message: 'Admin verification required. OTP sent to your email.'
+            };
+        }
+
+        const token = this.generateToken(user);
+        const userResponse = await this.formatUserResponse(user);
+
+        return { token, user: userResponse };
+    }
+
+    // Helper to generate JWT token
+    generateToken(user) {
+        return jwt.sign(
             { id: user._id, role: user.role },
             config.JWT_SECRET,
             { expiresIn: '24h' }
         );
+    }
 
+    // Helper to format user response
+    async formatUserResponse(user) {
         // Ensure referral code exists
         if (!user.referralCode) {
-            await user.save(); // This will trigger the pre-save hook to generate code
-            // Reload user to get the generated referral code
-            const updatedUser = await MarketUser.findById(user._id);
-            user.referralCode = updatedUser.referralCode;
+            await user.save();
+            user.referralCode = (await MarketUser.findById(user._id)).referralCode;
         }
 
-        // Format response based on user role
         const userResponse = {
+            id: user._id,
             email: user.email,
             fullName: user.fullName,
             phoneNumber: user.phoneNumber,
@@ -371,7 +398,44 @@ class AuthService {
             await user.save();
         }
 
-        return { token, user: userResponse };
+        return userResponse;
+    }
+
+    async verifyAdminLoginOTP(data) {
+        const { email, otp, sectionId } = data;
+
+        if (!email || !otp || !sectionId) {
+            throw { status: 400, message: 'Email, OTP, and Section ID are required' };
+        }
+
+        const otpRecord = await MarketOTP.findOne({
+            email: email.toLowerCase(),
+            otp,
+            sectionId,
+            userType: 'admin'
+        });
+
+        if (!otpRecord) {
+            throw { status: 400, message: 'Invalid or expired OTP/Section ID' };
+        }
+
+        const user = await MarketUser.findOne({ email: email.toLowerCase() });
+        if (!user || user.role !== 'admin') {
+            throw { status: 404, message: 'Admin user not found' };
+        }
+
+        // Clean up OTP record
+        await MarketOTP.deleteOne({ _id: otpRecord._id });
+
+        const token = this.generateToken(user);
+        const userResponse = await this.formatUserResponse(user);
+
+        return {
+            success: true,
+            message: 'Admin login verified successfully',
+            token,
+            user: userResponse
+        };
     }
 
     async getProfile(userId) {
