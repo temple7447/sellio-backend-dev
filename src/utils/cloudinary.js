@@ -10,14 +10,14 @@ cloudinary.config({
 
 const validateFile = (file) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 10 * 1024 * 1024; // 10MB
 
     if (!allowedTypes.includes(file.mimetype)) {
         throw new Error(`Invalid file type: ${file.mimetype}. Allowed types: ${allowedTypes.join(', ')}`);
     }
 
     if (file.size > maxSize) {
-        throw new Error('File size too large. Maximum size: 5MB');
+        throw new Error('File size too large. Maximum size: 10MB');
     }
 };
 
