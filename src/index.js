@@ -16,7 +16,9 @@ const testimonialRoutes = require('./routes/testimonial.routes');
 const reviewRoutes = require('./routes/review.routes');
 const walletRoutes = require('./routes/wallet.routes');
 const wishlistRoutes = require('./routes/wishlist.routes');
+const cartRoutes = require('./routes/cart.routes');
 const mediaRoutes = require('./routes/media.routes');
+const notificationRoutes = require('./routes/notification.routes');
 const cleanupService = require('./services/cleanup.service');
 
 // Start background services
@@ -67,7 +69,9 @@ app.get("/", (req, res) => {
             categories: '/api/categories',
             testimonials: '/api/testimonials',
             wallet: '/api/wallet',
-            wishlist: '/api/wishlist'
+            wishlist: '/api/wishlist',
+            cart: '/api/cart',
+            notifications: '/api/notifications'
         }
     });
 });
@@ -89,7 +93,9 @@ app.use('/api/testimonials', testimonialRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/cart', cartRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
