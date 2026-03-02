@@ -8,6 +8,12 @@ const mongoose = require('mongoose');  // Add this import at the top
 const chalk = require('chalk');
 const RewardSettings = require('../models/RewardSettings');
 
+const generateTrackingNumber = () => {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `SELLIO-${timestamp}-${randomPart}`;
+};
+
 class OrderService {
     async createOrder(orderData) {
         // Validate order items and calculate totals
@@ -756,13 +762,25 @@ class OrderService {
             throw { status: 400, message: `Cannot upload proof for item with status ${item.status}` };
         }
 
+        const trackingNumber = generateTrackingNumber();
+
         item.fulfillmentProof = proofUrl;
         item.fulfillmentDate = new Date();
         item.status = 'shipped';
         await item.save();
 
-        console.log(chalk.green(`✓ Fulfillment proof uploaded for item ${orderItemId}`));
-        return item;
+        const order = await MarketOrder.findById(item.orderId);
+        if (order) {
+            order.shipping = order.shipping || {};
+            order.shipping.tracking = {
+                number: trackingNumber,
+                url: null
+            };
+            await order.save();
+        }
+
+        console.log(chalk.green(`✓ Fulfillment proof uploaded for item ${orderItemId} with tracking: ${trackingNumber}`));
+        return { item, trackingNumber };
     }
 
     async confirmReceipt(customerId, orderId, itemProofs = {}) {

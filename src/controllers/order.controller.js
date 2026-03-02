@@ -226,12 +226,13 @@ class OrderController {
                 });
             }
 
-            const item = await orderService.uploadFulfillmentProof(sellerId, orderItemId, proofUrl);
+            const result = await orderService.uploadFulfillmentProof(sellerId, orderItemId, proofUrl);
 
             res.status(200).json({
                 success: true,
                 message: 'Fulfillment proof uploaded successfully. Item status updated to shipped.',
-                data: item
+                data: result.item,
+                trackingNumber: result.trackingNumber
             });
         } catch (error) {
             console.error('Upload fulfillment proof error:', error);
