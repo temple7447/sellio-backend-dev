@@ -156,12 +156,20 @@ class ProductService {
     }
 
     async getSellerProducts(sellerId, query = {}) {
-        const { page = 1, limit = 10, status, sort = '-createdAt' } = query;
+        const { page = 1, limit = 10, status, sort = '-createdAt', search } = query;
         const skip = (page - 1) * limit;
 
         const filter = { sellerId };
+        
         if (status && status !== 'all') {
             filter.status = status;
+        }
+
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
         }
 
         try {
@@ -180,8 +188,8 @@ class ProductService {
                 pagination: {
                     total,
                     pages: Math.ceil(total / limit),
-                    currentPage: page,
-                    limit
+                    currentPage: parseInt(page),
+                    limit: parseInt(limit)
                 }
             };
         } catch (error) {
