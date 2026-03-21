@@ -119,7 +119,7 @@ class ProductService {
             // Return populated product
             return await MarketProduct.findById(savedProduct._id)
                 .populate('category', 'name')
-                .populate('sellerId', 'businessName');
+                .populate('sellerId', 'businessName isTrustedSeller');
 
         } catch (error) {
             console.error('Product creation error:', error);
@@ -176,7 +176,7 @@ class ProductService {
             const [products, total] = await Promise.all([
                 MarketProduct.find(filter)
                     .populate('category', 'name')
-                    .populate('sellerId', 'businessName')
+                    .populate('sellerId', 'businessName isTrustedSeller')
                     .skip(skip)
                     .limit(limit)
                     .sort(sort),
@@ -321,7 +321,7 @@ class ProductService {
         // Get ALL products matching the filter (without pagination) to shuffle across entire platform
         const allProducts = await MarketProduct.find(filter)
             .populate('category', 'name')
-            .populate('sellerId', 'businessName')
+            .populate('sellerId', 'businessName isTrustedSeller')
             .sort(sortOptions)
             .lean(); // Use lean() for better performance with large datasets
 
@@ -475,7 +475,7 @@ class ProductService {
 
         const product = await MarketProduct.findById(productId)
             .populate('category', 'name')
-            .populate('sellerId', 'businessName');
+            .populate('sellerId', 'businessName isTrustedSeller');
 
         if (!product) {
             throw { status: 404, message: 'Product not found' };
@@ -494,7 +494,7 @@ class ProductService {
             status: 'active'
         })
             .populate('category', 'name')
-            .populate('sellerId', 'businessName');
+            .populate('sellerId', 'businessName isTrustedSeller');
 
         if (!product) {
             throw { status: 404, message: 'Product not found' };
@@ -520,7 +520,7 @@ class ProductService {
             status: 'active'
         })
             .populate('category', 'name')
-            .populate('sellerId', 'businessName')
+            .populate('sellerId', 'businessName isTrustedSeller')
             .limit(limit)
             .sort('-metadata.views');  // Sort by most viewed
 
@@ -535,7 +535,7 @@ class ProductService {
             status: 'active'
         })
             .populate('category', 'name')
-            .populate('sellerId', 'businessName')
+            .populate('sellerId', 'businessName isTrustedSeller')
             .limit(limit)
             .sort('-createdAt');
 
@@ -576,7 +576,7 @@ class ProductService {
         // Get all matching products first so we can shuffle across the entire seller catalog
         const allProducts = await MarketProduct.find(filter)
             .populate('category', 'name')
-            .populate('sellerId', 'businessName')
+            .populate('sellerId', 'businessName isTrustedSeller')
             .sort(sort)
             .lean();
 
@@ -590,7 +590,8 @@ class ProductService {
         return {
             seller: {
                 businessName: seller.businessName,
-                businessAddress: seller.businessAddress
+                businessAddress: seller.businessAddress,
+                isTrustedSeller: seller.isTrustedSeller || false
             },
             products: paginatedProducts,
             pagination: {
@@ -679,7 +680,7 @@ class ProductService {
                 'metadata.rating.count': { $gt: 0 } // Only products with ratings
             })
                 .populate('category', 'name')
-                .populate('sellerId', 'businessName')
+                .populate('sellerId', 'businessName isTrustedSeller')
                 .sort({
                     'metadata.rating.average': -1, // Highest rated first
                     'metadata.sales': -1,         // Most sales second
@@ -704,7 +705,8 @@ class ProductService {
                 },
                 seller: {
                     id: product.sellerId._id,
-                    businessName: product.sellerId.businessName
+                    businessName: product.sellerId.businessName,
+                    isTrustedSeller: product.sellerId.isTrustedSeller || false
                 },
                 rating: product.metadata.rating,
                 badge: this.getProductBadge(product),
@@ -746,7 +748,7 @@ class ProductService {
                 updatedAt: { $gte: oneWeekAgo }
             })
                 .populate('category', 'name')
-                .populate('sellerId', 'businessName')
+                .populate('sellerId', 'businessName isTrustedSeller')
                 .sort({
                     'metadata.views': -1,       // Most viewed first
                     'metadata.sales': -1,       // Most sales second
@@ -771,7 +773,8 @@ class ProductService {
                 },
                 seller: {
                     id: product.sellerId._id,
-                    businessName: product.sellerId.businessName
+                    businessName: product.sellerId.businessName,
+                    isTrustedSeller: product.sellerId.isTrustedSeller || false
                 },
                 image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
                 badge: this.getTrendingBadge(product),

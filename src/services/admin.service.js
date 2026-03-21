@@ -209,7 +209,7 @@ class AdminService {
             }
 
             const product = await MarketProduct.findById(productId)
-                .populate('sellerId', 'businessName email');
+                .populate('sellerId', 'businessName email isTrustedSeller');
 
             if (!product) {
                 throw { status: 404, message: 'Product not found' };
@@ -225,7 +225,8 @@ class AdminService {
                 seller: {
                     id: product.sellerId._id,
                     businessName: product.sellerId.businessName,
-                    email: product.sellerId.email
+                    email: product.sellerId.email,
+                    isTrustedSeller: product.sellerId.isTrustedSeller || false
                 },
                 updatedAt: product.updatedAt
             };
@@ -360,7 +361,7 @@ class AdminService {
 
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
-                .populate('sellerId', 'businessName email fullName')
+                .populate('sellerId', 'businessName email fullName isTrustedSeller')
                 .populate('category', 'name slug')
                 .skip(skip)
                 .limit(parseInt(limit))
@@ -392,7 +393,7 @@ class AdminService {
 
         const [products, total] = await Promise.all([
             MarketProduct.find(filter)
-                .populate('sellerId', 'businessName email')
+                .populate('sellerId', 'businessName email isTrustedSeller')
                 .populate('category', 'name')
                 .skip(skip)
                 .limit(limit)
@@ -428,7 +429,7 @@ class AdminService {
     async adminUpdateProduct(productId, updates) {
         try {
             const product = await MarketProduct.findById(productId)
-                .populate('sellerId', 'businessName email');
+                .populate('sellerId', 'businessName email isTrustedSeller');
 
             if (!product) {
                 throw { status: 404, message: 'Product not found' };
