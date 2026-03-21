@@ -98,6 +98,7 @@ router.post('/register/admin', adminController.registerAdmin);
 router.get('/admin/users', auth, isAdmin, adminController.getAllUsers);
 router.post('/resend-otp', authController.resendOTP);
 router.patch('/admin/verify-seller/:sellerId', auth, isAdmin, adminController.verifySeller);
+router.patch('/admin/sellers/:sellerId/trusted-badge', auth, isAdmin, adminController.toggleTrustedBadge);
 router.get('/seller/:sellerId/public', authController.getPublicSellerProfile);
 router.get('/sellers/top', authController.getTopSellers);
 router.get('/sellers', authController.getPublicSellers);

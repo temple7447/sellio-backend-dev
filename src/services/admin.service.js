@@ -78,6 +78,8 @@ class AdminService {
                 businessAddress: user.businessAddress,
                 governmentId: user.governmentId,
                 adminVerified: user.adminVerified,
+                isTrustedSeller: user.isTrustedSeller || false,
+                trustedBadgeAwardedAt: user.trustedBadgeAwardedAt || null,
                 hasBankInfo: !!(user.bankAccount && (user.bankAccount.bankName || user.bankAccount.accountNumber || user.bankAccount.accountName)),
                 bankAccount: user.bankAccount ? {
                     bankName: user.bankAccount.bankName || null,
@@ -116,6 +118,28 @@ class AdminService {
                 email: seller.email,
                 businessName: seller.businessName,
                 adminVerified: seller.adminVerified
+            }
+        };
+    }
+
+    async toggleTrustedBadge(sellerId, isTrusted) {
+        const seller = await MarketUser.findOne({ _id: sellerId, role: 'seller' });
+        if (!seller) {
+            throw { status: 404, message: 'Seller not found' };
+        }
+
+        seller.isTrustedSeller = isTrusted;
+        seller.trustedBadgeAwardedAt = isTrusted ? new Date() : null;
+        await seller.save();
+
+        return {
+            message: isTrusted ? 'Seller awarded trusted badge' : 'Trusted badge removed from seller',
+            seller: {
+                id: seller._id,
+                email: seller.email,
+                businessName: seller.businessName,
+                isTrustedSeller: seller.isTrustedSeller,
+                trustedBadgeAwardedAt: seller.trustedBadgeAwardedAt
             }
         };
     }
@@ -459,7 +483,7 @@ class AdminService {
 
             // Define allowed updates based on user role
             const allowedUpdates = {
-                seller: ['businessName', 'businessAddress', 'phoneNumber', 'fullName', 'email', 'adminVerified', 'isVerified'],
+                seller: ['businessName', 'businessAddress', 'phoneNumber', 'fullName', 'email', 'adminVerified', 'isVerified', 'isTrustedSeller'],
                 customer: ['fullName', 'phoneNumber', 'email', 'isVerified'],
                 admin: ['fullName', 'phoneNumber', 'email']
             };

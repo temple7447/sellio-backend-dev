@@ -284,7 +284,8 @@ class AuthService {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
                 adminVerified: user.adminVerified || false,
-                governmentId: user.governmentId
+                governmentId: user.governmentId,
+                isTrustedSeller: user.isTrustedSeller || false
             } : user.role === 'customer' ? {
                 shippingAddresses: await addressService.getAddresses(user._id),
                 metadata: {
@@ -381,7 +382,8 @@ class AuthService {
             ...(user.role === 'seller' ? {
                 businessName: user.businessName,
                 businessAddress: user.businessAddress,
-                adminVerified: user.adminVerified || false
+                adminVerified: user.adminVerified || false,
+                isTrustedSeller: user.isTrustedSeller || false
             } : user.role === 'customer' ? {
                 shippingAddresses: await addressService.getAddresses(user._id)
             } : {
@@ -469,6 +471,8 @@ class AuthService {
                 businessAddress: user.businessAddress,
                 adminVerified: user.adminVerified || false,
                 governmentId: user.governmentId,
+                isTrustedSeller: user.isTrustedSeller || false,
+                trustedBadgeAwardedAt: user.trustedBadgeAwardedAt || null,
                 bankAccount: user.bankAccount ? {
                     bankName: user.bankAccount.bankName || null,
                     accountNumber: user.bankAccount.accountNumber || null,
@@ -571,7 +575,8 @@ class AuthService {
                 count: ratingStats[0]?.totalRatings || 0
             },
             totalProducts,
-            joinedDate: seller.createdAt
+            joinedDate: seller.createdAt,
+            isTrustedSeller: seller.isTrustedSeller || false
         };
 
         // Only include bank account if requesting user is admin or the seller themselves
@@ -772,7 +777,7 @@ class AuthService {
                 isVerified: true,
                 adminVerified: true
             })
-                .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
+                .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified isTrustedSeller')
                 .limit(safeLimit);
 
             // Get product and rating stats for each seller
@@ -813,7 +818,8 @@ class AuthService {
                     },
                     totalProducts,
                     logo: seller.profileImage || null,
-                    slug: businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                    slug: businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                    isTrustedSeller: seller.isTrustedSeller || false
                 };
             }));
 
@@ -860,7 +866,7 @@ class AuthService {
             // Get sellers with pagination and select more fields
             const [sellers, total] = await Promise.all([
                 MarketUser.find(filter)
-                    .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified')
+                    .select('businessName businessAddress profileImage phoneNumber createdAt adminVerified isTrustedSeller')
                     .lean() // Use lean for better performance
                     .skip(skip)
                     .limit(limit),
@@ -907,6 +913,7 @@ class AuthService {
                         phoneNumber: seller.phoneNumber,
                         logo: seller.profileImage || null,
                         status: seller.adminVerified ? 'verified' : 'pending',
+                        isTrustedSeller: seller.isTrustedSeller || false,
                         rating: {
                             average: parseFloat((ratingStats[0]?.averageRating || 0).toFixed(1)),
                             count: ratingStats[0]?.totalRatings || 0

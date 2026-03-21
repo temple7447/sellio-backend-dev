@@ -159,6 +159,14 @@ const MarketSeller = MarketUser.discriminator('seller', new mongoose.Schema({
     adminVerified: {
         type: Boolean,
         default: false
+    },
+    isTrustedSeller: {
+        type: Boolean,
+        default: false
+    },
+    trustedBadgeAwardedAt: {
+        type: Date,
+        default: null
     }
 }));
 

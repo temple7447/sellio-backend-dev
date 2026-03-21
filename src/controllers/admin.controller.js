@@ -35,6 +35,21 @@ class AdminController {
         }
     }
 
+    async toggleTrustedBadge(req, res) {
+        try {
+            const { isTrusted } = req.body;
+            if (typeof isTrusted !== 'boolean') {
+                return res.status(400).json({ message: 'isTrusted must be a boolean' });
+            }
+            const result = await adminService.toggleTrustedBadge(req.params.sellerId, isTrusted);
+            console.log(chalk.green(`✓ Trusted badge ${isTrusted ? 'awarded' : 'removed'} successfully`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Trusted badge toggle failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async deleteUser(req, res) {
         try {
             const { reason } = req.body; // Optional deletion reason
