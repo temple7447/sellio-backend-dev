@@ -351,12 +351,18 @@ class AdminService {
             if (maxPrice !== undefined) filter['price.current'].$lte = parseFloat(maxPrice);
         }
 
+        // Expanded search across multiple fields
         if (search) {
-            filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } },
-                { brand: { $regex: search, $options: 'i' } }
+            const searchRegex = { $regex: search, $options: 'i' };
+            const searchConditions = [
+                { name: searchRegex },                    // Product name
+                { description: searchRegex },             // Product description
+                { brand: searchRegex },                   // Brand
+                { 'inventory.sku': searchRegex },         // SKU code
+                { slug: searchRegex }                     // URL slug
             ];
+
+            filter.$or = searchConditions;
         }
 
         const [products, total] = await Promise.all([

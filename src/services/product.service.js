@@ -165,10 +165,15 @@ class ProductService {
             filter.status = status;
         }
 
+        // Expanded search across multiple product fields
         if (search) {
+            const searchRegex = { $regex: search, $options: 'i' };
             filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+                { name: searchRegex },              // Product name
+                { description: searchRegex },       // Product description
+                { brand: searchRegex },             // Brand
+                { 'inventory.sku': searchRegex },   // SKU code
+                { slug: searchRegex }               // Product slug
             ];
         }
 
@@ -275,35 +280,49 @@ class ProductService {
             }
         }
 
-        // Add other filters
+        // Add other filters - BROAD SEARCH across multiple fields
         if (search) {
             const searchRegex = { $regex: search, $options: 'i' };
-            const searchConditions = [
-                { name: searchRegex },
-                { description: searchRegex },
-                { brand: searchRegex }
-            ];
+            const searchConditions = [];
 
-            // Also search by seller business name
+            // Direct product field searches
+            searchConditions.push(
+                { name: searchRegex },                    // Product name
+                { description: searchRegex },             // Product description
+                { brand: searchRegex },                   // Brand/manufacturer
+                { 'inventory.sku': searchRegex },         // SKU/product code
+                { slug: searchRegex }                     // Product URL slug
+            );
+
+            // Search by seller business name
             const matchingSellers = await MarketUser.find({
-                businessName: searchRegex,
+                $or: [
+                    { businessName: searchRegex },        // Seller business name
+                    { fullName: searchRegex },            // Seller full name
+                    { email: searchRegex }                // Seller email
+                ],
                 role: 'seller'
             }).select('_id');
             if (matchingSellers.length > 0) {
-                searchConditions.push({ sellerId: { $in: matchingSellers.map(s => s._id) } });
+                searchConditions.push({ 
+                    sellerId: { $in: matchingSellers.map(s => s._id) } 
+                });
             }
 
-            // Also search by category name
+            // Search by category name and slug
             const matchingCategories = await MarketCategory.find({
                 $or: [
-                    { name: searchRegex },
-                    { slug: searchRegex }
+                    { name: searchRegex },                // Category name
+                    { slug: searchRegex }                 // Category URL slug
                 ]
             }).select('_id');
             if (matchingCategories.length > 0) {
-                searchConditions.push({ category: { $in: matchingCategories.map(c => c._id) } });
+                searchConditions.push({ 
+                    category: { $in: matchingCategories.map(c => c._id) } 
+                });
             }
 
+            // Apply OR conditions - find products matching ANY of the search criteria
             filter.$or = searchConditions;
         }
         if (minPrice || maxPrice) {
