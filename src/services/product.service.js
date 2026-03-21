@@ -277,10 +277,34 @@ class ProductService {
 
         // Add other filters
         if (search) {
-            filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
+            const searchRegex = { $regex: search, $options: 'i' };
+            const searchConditions = [
+                { name: searchRegex },
+                { description: searchRegex },
+                { brand: searchRegex }
             ];
+
+            // Also search by seller business name
+            const matchingSellers = await MarketUser.find({
+                businessName: searchRegex,
+                role: 'seller'
+            }).select('_id');
+            if (matchingSellers.length > 0) {
+                searchConditions.push({ sellerId: { $in: matchingSellers.map(s => s._id) } });
+            }
+
+            // Also search by category name
+            const matchingCategories = await MarketCategory.find({
+                $or: [
+                    { name: searchRegex },
+                    { slug: searchRegex }
+                ]
+            }).select('_id');
+            if (matchingCategories.length > 0) {
+                searchConditions.push({ category: { $in: matchingCategories.map(c => c._id) } });
+            }
+
+            filter.$or = searchConditions;
         }
         if (minPrice || maxPrice) {
             filter['price.current'] = {};
