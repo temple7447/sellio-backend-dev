@@ -9,7 +9,7 @@ const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/product.routes');
 const orderRoutes = require('./routes/order.routes');
 const securityMiddleware = require('./middleware/security');
-const requestLogger = require('./middleware/logger');
+const discordRequestLogger = require('./middleware/requestLogger');
 const multer = require('multer');
 const categoryRoutes = require('./routes/category.routes');
 const testimonialRoutes = require('./routes/testimonial.routes');
@@ -22,6 +22,7 @@ const notificationRoutes = require('./routes/notification.routes');
 const blogRoutes = require('./routes/blog.routes');
 const contactRoutes = require('./routes/contact.routes');
 const cleanupService = require('./services/cleanup.service');
+const discordLogger = require('./utils/discordLogger');
 
 // Start background services
 cleanupService.start();
@@ -46,8 +47,8 @@ const app = express();
 // Apply security middleware
 securityMiddleware(app);
 
-// Add logger before CORS and other middleware
-app.use(requestLogger);
+// Add Discord request logger before CORS
+app.use(discordRequestLogger);
 
 app.use(cors({
     origin: "*",
@@ -104,8 +105,6 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/contact', contactRoutes);
-
-const discordLogger = require('./utils/discordLogger');
 
 // Global error handler
 app.use((err, req, res, next) => {
