@@ -1,5 +1,6 @@
 const chalk = require('chalk');
 const authService = require('../services/auth.service');
+const discordLogger = require('../utils/discordLogger');
 
 class AuthController {
     async registerSeller(req, res) {
@@ -40,9 +41,19 @@ class AuthController {
             const result = await authService.login(req.body);
             const message = result.requiresOTP ? 'Admin verification required' : `${result.user.role} logged in successfully`;
             console.log(chalk.green(`✓ ${message}`));
+            
+            if (!result.requiresOTP) {
+                discordLogger.authLog('Login', result.user.email, req.ip, true, {
+                    role: result.user.role
+                });
+            }
+            
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Login failed:', error));
+            discordLogger.authLog('Login Failed', req.body.email, req.ip, false, {
+                error: error.message
+            });
             res.status(400).json({ message: error.message });
         }
     }
@@ -51,9 +62,15 @@ class AuthController {
         try {
             const result = await authService.verifyAdminLoginOTP(req.body);
             console.log(chalk.green('✓ Admin login verified successfully'));
+            discordLogger.authLog('Admin Login', result.user.email, req.ip, true, {
+                role: 'admin'
+            });
             res.json(result);
         } catch (error) {
             console.error(chalk.red('✗ Admin login verification failed:', error));
+            discordLogger.authLog('Admin Login Failed', req.body.email, req.ip, false, {
+                error: error.message
+            });
             res.status(error.status || 400).json({ message: error.message });
         }
     }

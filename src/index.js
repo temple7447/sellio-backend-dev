@@ -105,6 +105,8 @@ app.use('/api/blog', blogRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/contact', contactRoutes);
 
+const discordLogger = require('./utils/discordLogger');
+
 // Global error handler
 app.use((err, req, res, next) => {
     const timestamp = new Date().toISOString();
@@ -114,6 +116,13 @@ app.use((err, req, res, next) => {
         path: req.path,
         method: req.method,
         error: err
+    });
+
+    discordLogger.error(`API Error: ${err.message}`, {
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        stack: err.stack?.substring(0, 500) || 'No stack trace'
     });
 
     const statusCode = err.status || 500;
@@ -128,4 +137,5 @@ app.use((err, req, res, next) => {
 
 app.listen(config.PORT, '0.0.0.0', () => {
     console.log(chalk.blue(`✓ Server is running on port ${config.PORT}`));
+    discordLogger.success(`Server started on port ${config.PORT}`);
 });
