@@ -20,6 +20,7 @@ const cartRoutes = require('./routes/cart.routes');
 const mediaRoutes = require('./routes/media.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const blogRoutes = require('./routes/blog.routes');
+const contactRoutes = require('./routes/contact.routes');
 const cleanupService = require('./services/cleanup.service');
 
 // Start background services
@@ -75,7 +76,8 @@ app.get("/", (req, res) => {
             wishlist: '/api/wishlist',
             cart: '/api/cart',
             media: '/api/media',
-            notifications: '/api/notifications'
+            notifications: '/api/notifications',
+            contact: '/api/contact'
         }
     });
 });
@@ -101,6 +103,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
