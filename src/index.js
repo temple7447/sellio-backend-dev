@@ -19,6 +19,7 @@ const wishlistRoutes = require('./routes/wishlist.routes');
 const cartRoutes = require('./routes/cart.routes');
 const mediaRoutes = require('./routes/media.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const blogRoutes = require('./routes/blog.routes');
 const cleanupService = require('./services/cleanup.service');
 
 // Start background services
@@ -68,9 +69,12 @@ app.get("/", (req, res) => {
             orders: '/api/orders',
             categories: '/api/categories',
             testimonials: '/api/testimonials',
+            reviews: '/api/reviews',
+            blog: '/api/blog',
             wallet: '/api/wallet',
             wishlist: '/api/wishlist',
             cart: '/api/cart',
+            media: '/api/media',
             notifications: '/api/notifications'
         }
     });
@@ -95,6 +99,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/blog', blogRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 // Global error handler
