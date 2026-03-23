@@ -72,7 +72,7 @@ router.get('/related/:productId', async (req, res) => {
 
 router.get('/:productId/seller/:sellerId/others', productController.getOtherProductsBySeller);
 router.get('/:id', auth, productController.getProductById);
-router.patch('/:id', auth, isSeller, productController.updateProduct);
+router.patch('/:id', auth, isSeller, upload.array('images', 5), productController.updateProduct);
 router.delete('/:id', auth, isSeller, productController.deleteProduct);
 router.patch('/:id/status', auth, isSeller, productController.updateProductStatus);
 

@@ -89,7 +89,7 @@ class ProductController {
 
     async updateProduct(req, res) {
         try {
-            const product = await productService.updateProduct(req.params.id, req.user._id, req.body);
+            const product = await productService.updateProduct(req.params.id, req.user._id, req.body, req.files);
             console.log(chalk.blue(`✓ Product updated: ${product.name}`));
             res.json(product);
         } catch (error) {

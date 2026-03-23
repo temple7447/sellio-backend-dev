@@ -4,6 +4,7 @@ const { MarketUser } = require('../models/MarketUser');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const mongoose = require('mongoose');
 const MarketOrder = require('../models/MarketOrder');
+const discordLogger = require('../utils/discordLogger');
 
 class ProductService {
     async createProduct(sellerId, productData, files) {
@@ -115,6 +116,12 @@ class ProductService {
             });
 
             const savedProduct = await product.save();
+
+            discordLogger.productLog('Created', savedProduct._id, productData.name, {
+                price: price.current,
+                category: category.name,
+                sellerId: sellerId
+            });
 
             // Return populated product
             return await MarketProduct.findById(savedProduct._id)
@@ -409,15 +416,49 @@ class ProductService {
     }
 
 
-    async updateProduct(productId, sellerId, updates) {
+    async updateProduct(productId, sellerId, updates, files = null) {
         const product = await MarketProduct.findOne({ _id: productId, sellerId });
 
         if (!product) {
             throw { status: 404, message: 'Product not found' };
         }
 
-        Object.assign(product, updates);
-        return await product.save();
+        const allowedFields = ['name', 'description', 'price', 'discount', 'images'];
+
+        const filteredUpdates = {};
+        for (const key of allowedFields) {
+            if (updates[key] !== undefined) {
+                filteredUpdates[key] = updates[key];
+            }
+        }
+
+        if (files && files.length > 0) {
+            const uploadToCloudinary = require('../utils/cloudinary').uploadToCloudinary;
+            const imageUploads = await Promise.all(
+                files.map(async (file) => {
+                    const result = await uploadToCloudinary(file, 'products');
+                    return {
+                        url: result.secure_url,
+                        publicId: result.public_id,
+                        isDefault: false
+                    };
+                })
+            );
+
+            const existingImages = product.images || [];
+            const newImages = [...existingImages, ...imageUploads];
+            filteredUpdates.images = newImages;
+        }
+
+        Object.assign(product, filteredUpdates);
+        const updatedProduct = await product.save();
+
+        discordLogger.productLog('Updated', productId, product.name, {
+            updatedFields: Object.keys(filteredUpdates).join(', '),
+            sellerId: sellerId
+        });
+
+        return updatedProduct;
     }
 
     async deleteProduct(productId, sellerId) {
