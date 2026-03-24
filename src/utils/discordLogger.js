@@ -20,16 +20,29 @@ const colors = {
 class DiscordLogger {
     constructor() {
         this.webhookUrl = DISCORD_WEBHOOK_URL;
-        this.buffer = [];
-        this.flushInterval = 5000;
-        setInterval(() => this.flush(), this.flushInterval);
+        this.enabled = true;
+        this.lastRequestTime = 0;
+        this.minInterval = 1000;
     }
 
     async send(embed) {
+        if (!this.enabled) return;
+
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        
+        if (timeSinceLastRequest < this.minInterval) {
+            await new Promise(resolve => setTimeout(resolve, this.minInterval - timeSinceLastRequest));
+        }
+
         try {
-            await axios.post(this.webhookUrl, { embeds: [embed] });
+            this.lastRequestTime = Date.now();
+            await axios.post(this.webhookUrl, { embeds: [embed] }, {
+                timeout: 5000,
+                maxRedirects: 5
+            });
         } catch (error) {
-            console.error('Failed to send Discord log:', error.message);
+            // Silently fail - logging should not affect app performance
         }
     }
 
@@ -65,7 +78,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async warning(message, details = null) {
@@ -78,7 +91,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async info(message, details = null) {
@@ -91,7 +104,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async success(message, details = null) {
@@ -104,7 +117,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async debug(message, details = null) {
@@ -117,7 +130,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async request(req) {
@@ -147,7 +160,7 @@ class DiscordLogger {
             });
         }
 
-        await this.send(embed);
+        this.send(embed);
     }
 
     async response(req, res, responseData = null) {
@@ -175,7 +188,7 @@ class DiscordLogger {
             });
         }
 
-        await this.send(embed);
+        this.send(embed);
     }
 
     async authLog(action, email, ip, success, details = null) {
@@ -194,7 +207,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields.push(...this.formatDetails(details));
-        await this.send(embed);
+        this.send(embed);
     }
 
     async orderLog(action, orderId, status, details = null) {
@@ -207,7 +220,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async paymentLog(action, amount, status, details = null) {
@@ -223,7 +236,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async adminAction(action, adminEmail, targetEmail, details = null) {
@@ -236,7 +249,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async sellerVerification(sellerEmail, action, details = null) {
@@ -249,7 +262,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async userRegistration(userType, email, details = null) {
@@ -262,7 +275,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async productLog(action, productId, productName, details = null) {
@@ -275,7 +288,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async walletLog(action, userId, amount, balance, details = null) {
@@ -288,7 +301,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async withdrawalLog(action, userId, amount, status, details = null) {
@@ -303,7 +316,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async databaseLog(operation, collection, details = null) {
@@ -316,7 +329,7 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
     async emailLog(action, to, subject, success, details = null) {
@@ -331,11 +344,15 @@ class DiscordLogger {
         };
 
         if (details) embed.fields = this.formatDetails(details);
-        await this.send(embed);
+        this.send(embed);
     }
 
-    async flush() {
-        // Reserved for batch sending if needed
+    disable() {
+        this.enabled = false;
+    }
+
+    enable() {
+        this.enabled = true;
     }
 }
 
