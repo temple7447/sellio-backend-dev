@@ -203,6 +203,52 @@ class WalletController {
     }
 
     /**
+     * Initialize wallet deposit
+     * POST /api/wallet/deposit/initialize
+     */
+    async initializeDeposit(req, res) {
+        try {
+            const { amount } = req.body;
+            if (!amount || amount <= 0) {
+                return res.status(400).json({ message: 'A valid amount is required' });
+            }
+
+            const result = await walletService.initializeDeposit(req.user._id, amount);
+            console.log(chalk.green('✓ Wallet deposit initialized successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Initialize deposit failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Verify wallet deposit
+     * GET /api/wallet/deposit/verify/:reference
+     */
+    async verifyDeposit(req, res) {
+        try {
+            const { reference } = req.params;
+            if (!reference) {
+                return res.status(400).json({ message: 'Transaction reference is required' });
+            }
+
+            const result = await walletService.verifyDeposit(req.user._id, reference);
+
+            if (result.success) {
+                console.log(chalk.green('✓ Wallet deposit verified and credited successfully'));
+                res.json(result);
+            } else {
+                console.log(chalk.yellow('⚠ Wallet deposit verification failed:', result.message));
+                res.status(400).json(result);
+            }
+        } catch (error) {
+            console.error(chalk.red('✗ Verify deposit failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
      * Approve a pending withdrawal (Admin Only)
      * POST /api/wallet/admin/withdrawals/:transactionId/approve
      */
@@ -242,8 +288,26 @@ class WalletController {
             console.log(chalk.green('✓ Withdrawal declined manually'));
             res.json(result);
         } catch (error) {
-            console.error(chalk.red('✗ Manual decline failed:', error.message));
+            console.error(chalk.red('✗ Manual decline failed:'), error.message);
             res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * Purchase trusted badge
+     * POST /api/wallet/trusted-badge/purchase
+     */
+    async purchaseTrustedBadge(req, res) {
+        try {
+            const result = await walletService.purchaseTrustedBadge(req.user._id);
+            console.log(chalk.green('✓ Trusted badge purchased successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Purchase trusted badge failed:'), error.message);
+            res.status(error.status || 500).json({ 
+                message: error.message,
+                expiresAt: error.expiresAt 
+            });
         }
     }
 }

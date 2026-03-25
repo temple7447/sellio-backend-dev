@@ -217,6 +217,147 @@ class WalletService {
     }
 
     /**
+     * Initialize a wallet deposit via Paystack
+     */
+    async initializeDeposit(userId, amount) {
+        const paystack = require('../utils/paystack');
+        const config = require('../config/config');
+        const user = await MarketUser.findById(userId);
+
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        const reference = this.generateReference();
+
+        // 1. Create a pending transaction record
+        const wallet = await this.getBalance(userId);
+        const transaction = await WalletTransaction.create({
+            userId,
+            type: 'deposit',
+            amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: wallet.balance, // Will be updated on verification
+            reference,
+            description: 'Wallet deposit via Paystack',
+            status: 'pending',
+            paymentGateway: 'paystack',
+            metadata: {
+                initializedAt: new Date(),
+                amount
+            }
+        });
+
+        // 2. Initialize Paystack transaction
+        try {
+            const callbackUrl = `${config.FRONTEND_URL}/deposit/verify/${reference}`;
+            const response = await paystack.initializeTransaction(
+                user.email,
+                amount,
+                reference,
+                callbackUrl
+            );
+
+            return {
+                transaction,
+                authorizationUrl: response.data.authorization_url,
+                accessCode: response.data.access_code,
+                reference: response.data.reference
+            };
+        } catch (error) {
+            // Update transaction to failed if initialization fails
+            transaction.status = 'failed';
+            transaction.metadata.error = error.message || 'Paystack initialization failed';
+            await transaction.save();
+
+            throw {
+                status: 500,
+                message: 'Failed to initialize Paystack transaction',
+                details: error.message
+            };
+        }
+    }
+
+    /**
+     * Verify a wallet deposit
+     */
+    async verifyDeposit(userId, reference) {
+        const paystack = require('../utils/paystack');
+
+        // 1. Find the transaction
+        const transaction = await WalletTransaction.findOne({ reference, userId });
+        if (!transaction) {
+            throw { status: 404, message: 'Transaction not found' };
+        }
+
+        if (transaction.status !== 'pending') {
+            return {
+                message: `Transaction is already ${transaction.status}`,
+                transaction
+            };
+        }
+
+        // 2. Verify with Paystack
+        try {
+            const response = await paystack.verifyTransaction(reference);
+            const paymentData = response.data;
+
+            if (paymentData.status === 'success') {
+                // 3. Credit the wallet with a NEW unique reference
+                const newReference = this.generateReference();
+                const creditResult = await this.credit(userId, transaction.amount, transaction.description, {
+                    type: 'deposit',
+                    reference: newReference,
+                    paymentGateway: 'paystack',
+                    status: 'completed',
+                    metadata: {
+                        ...transaction.metadata,
+                        paidAt: paymentData.paid_at,
+                        channel: paymentData.channel,
+                        paystackData: paymentData,
+                        originalReference: transaction.reference
+                    }
+                });
+
+                // Update the original pending transaction record
+                transaction.status = 'completed';
+                transaction.balanceAfter = creditResult.balanceAfter;
+                transaction.metadata = {
+                    ...transaction.metadata,
+                    verifiedAt: new Date(),
+                    paystackData: paymentData
+                };
+                await transaction.save();
+
+                return {
+                    success: true,
+                    transaction,
+                    newBalance: creditResult.balanceAfter
+                };
+            } else {
+                // Update transaction status if not successful
+                transaction.status = paystack.getTransactionStatus(paymentData.status);
+                transaction.metadata.paystackError = paymentData.gateway_response;
+                await transaction.save();
+
+                return {
+                    success: false,
+                    status: transaction.status,
+                    message: paymentData.gateway_response || 'Payment failed',
+                    transaction
+                };
+            }
+        } catch (error) {
+            console.error(chalk.red('✗ Deposit verification failed:'), error);
+            throw {
+                status: 500,
+                message: 'Error verifying deposit with Paystack',
+                details: error.message
+            };
+        }
+    }
+
+    /**
      * Get wallet summary statistics
      */
     async getWalletSummary(userId) {
@@ -531,6 +672,106 @@ class WalletService {
         }
 
         throw { status: 400, message: 'Invalid status for manual processing. Use "completed" or "failed".' };
+    }
+
+    /**
+     * Purchase trusted badge for seller
+     * Cost: 3500 Naira
+     * Duration: 1 year
+     */
+    async purchaseTrustedBadge(userId) {
+        const { MarketUser } = require('../models/MarketUser');
+        const TRUSTED_BADGE_COST = 3500;
+        const BADGE_DURATION_DAYS = 365;
+
+        const user = await MarketUser.findById(userId);
+        
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        if (user.role !== 'seller') {
+            throw { status: 403, message: 'Only sellers can purchase trusted badge' };
+        }
+
+        if (user.isTrustedSeller) {
+            const now = new Date();
+            if (user.trustedBadgeAwardedAt) {
+                const expiryDate = new Date(user.trustedBadgeAwardedAt);
+                expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+                
+                if (now < expiryDate) {
+                    throw { 
+                        status: 400, 
+                        message: 'You already have an active trusted badge',
+                        expiresAt: expiryDate
+                    };
+                }
+            }
+        }
+
+        const wallet = await this.getBalance(userId);
+        if (wallet.balance < TRUSTED_BADGE_COST) {
+            throw {
+                status: 400,
+                message: `Insufficient wallet balance. Required: ₦${TRUSTED_BADGE_COST}, Available: ₦${wallet.balance}`
+            };
+        }
+
+        const debitResult = await this.debit(userId, TRUSTED_BADGE_COST, 'Trusted badge purchase', {
+            type: 'payment',
+            status: 'completed',
+            metadata: {
+                badgePurchase: true,
+                purchaseDate: new Date()
+            }
+        });
+
+        user.isTrustedSeller = true;
+        user.trustedBadgeAwardedAt = new Date();
+        await user.save();
+
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+        console.log(chalk.green(`✓ Trusted badge purchased for seller ${userId}, expires: ${expiresAt}`));
+
+        return {
+            success: true,
+            message: 'Trusted badge purchased successfully',
+            isTrustedSeller: user.isTrustedSeller,
+            purchasedAt: user.trustedBadgeAwardedAt,
+            expiresAt: expiresAt,
+            amountPaid: TRUSTED_BADGE_COST,
+            newBalance: debitResult.balanceAfter
+        };
+    }
+
+    /**
+     * Check and expire trusted badges that have exceeded 1 year
+     */
+    async checkAndExpireBadges() {
+        const { MarketUser } = require('../models/MarketUser');
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+        const expiredSellers = await MarketUser.find({
+            role: 'seller',
+            isTrustedSeller: true,
+            trustedBadgeAwardedAt: { $lte: oneYearAgo }
+        });
+
+        for (const seller of expiredSellers) {
+            seller.isTrustedSeller = false;
+            seller.trustedBadgeAwardedAt = null;
+            await seller.save();
+            console.log(chalk.yellow(`⚠ Trusted badge expired for seller ${seller._id}`));
+        }
+
+        return {
+            checked: expiredSellers.length,
+            expired: expiredSellers.length
+        };
     }
 
     /**

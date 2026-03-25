@@ -1,5 +1,7 @@
 const MarketOrder = require('../models/MarketOrder');
 const MarketOrderItem = require('../models/MarketOrderItem');
+const { MarketUser } = require('../models/MarketUser');
+const walletService = require('./wallet.service');
 const chalk = require('chalk');
 
 class CleanupService {
@@ -18,9 +20,11 @@ class CleanupService {
 
         // Run immediately on start
         this.cleanupUnpaidOrders();
+        this.expireTrustedBadges();
 
         this.interval = setInterval(() => {
             this.cleanupUnpaidOrders();
+            this.expireTrustedBadges();
         }, intervalMs);
     }
 
@@ -70,6 +74,20 @@ class CleanupService {
             console.log(chalk.green(`✓ Successfully deleted ${ordersResult.deletedCount} orders and ${itemsResult.deletedCount} items.`));
         } catch (error) {
             console.error(chalk.red('✗ Error during unpaid order cleanup:'), error.message);
+        }
+    }
+
+    /**
+     * Expire trusted badges that have exceeded 1 year
+     */
+    async expireTrustedBadges() {
+        try {
+            const result = await walletService.checkAndExpireBadges();
+            if (result.expired > 0) {
+                console.log(chalk.yellow(`[${new Date().toISOString()}] Expired ${result.expired} trusted badges`));
+            }
+        } catch (error) {
+            console.error(chalk.red('✗ Error during badge expiry check:'), error.message);
         }
     }
 }

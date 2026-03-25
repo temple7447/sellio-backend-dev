@@ -25,6 +25,20 @@ router.get('/transactions', auth, walletController.getTransactions);
 router.get('/summary', auth, walletController.getSummary);
 
 /**
+ * @route   POST /api/wallet/deposit/initialize
+ * @desc    Initialize a wallet deposit via Paystack
+ * @access  Private
+ */
+router.post('/deposit/initialize', auth, walletController.initializeDeposit);
+
+/**
+ * @route   GET /api/wallet/deposit/verify/:reference
+ * @desc    Verify a wallet deposit via Paystack
+ * @access  Private
+ */
+router.get('/deposit/verify/:reference', auth, walletController.verifyDeposit);
+
+/**
  * @route   GET /api/wallet/admin/transactions
  * @desc    Get all transactions across the system (Admin only)
  * @access  Private (Admin)
@@ -86,5 +100,12 @@ router.post('/admin/withdrawals/:transactionId/approve', auth, isAdmin, walletCo
  * @access  Private (Admin)
  */
 router.post('/admin/withdrawals/:transactionId/decline', auth, isAdmin, walletController.declineWithdrawal);
+
+/**
+ * @route   POST /api/wallet/trusted-badge/purchase
+ * @desc    Purchase trusted badge for seller (3500 Naira)
+ * @access  Private (Sellers only)
+ */
+router.post('/trusted-badge/purchase', auth, walletController.purchaseTrustedBadge);
 
 module.exports = router;
