@@ -17,7 +17,8 @@ const walletTransactionSchema = new mongoose.Schema({
             'earning',         // Seller receives payment
             'transfer',        // Transfer between users
             'referral_bonus',  // Referral reward (₦500)
-            'cashback'         // Cashback reward (₦1,000)
+            'cashback',        // Cashback reward (₦1,000)
+            'ad_spend'         // Ad campaign payment
         ],
         required: true
     },

@@ -2,6 +2,7 @@ const MarketOrder = require('../models/MarketOrder');
 const MarketOrderItem = require('../models/MarketOrderItem');
 const { MarketUser } = require('../models/MarketUser');
 const walletService = require('./wallet.service');
+const adsService = require('./ads.service');
 const chalk = require('chalk');
 
 class CleanupService {
@@ -21,10 +22,12 @@ class CleanupService {
         // Run immediately on start
         this.cleanupUnpaidOrders();
         this.expireTrustedBadges();
+        this.expireAdCampaigns();
 
         this.interval = setInterval(() => {
             this.cleanupUnpaidOrders();
             this.expireTrustedBadges();
+            this.expireAdCampaigns();
         }, intervalMs);
     }
 
@@ -88,6 +91,20 @@ class CleanupService {
             }
         } catch (error) {
             console.error(chalk.red('✗ Error during badge expiry check:'), error.message);
+        }
+    }
+
+    /**
+     * Mark expired ad campaigns as completed
+     */
+    async expireAdCampaigns() {
+        try {
+            const count = await adsService.markExpiredCampaigns();
+            if (count > 0) {
+                console.log(chalk.blue(`[${new Date().toISOString()}] Completed ${count} expired ad campaigns`));
+            }
+        } catch (error) {
+            console.error(chalk.red('✗ Error during ad campaign expiry check:'), error.message);
         }
     }
 }

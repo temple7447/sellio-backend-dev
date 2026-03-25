@@ -21,6 +21,7 @@ const mediaRoutes = require('./routes/media.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const blogRoutes = require('./routes/blog.routes');
 const contactRoutes = require('./routes/contact.routes');
+const adsRoutes = require('./routes/ads.routes');
 const cleanupService = require('./services/cleanup.service');
 const discordLogger = require('./utils/discordLogger');
 
@@ -78,7 +79,8 @@ app.get("/", (req, res) => {
             cart: '/api/cart',
             media: '/api/media',
             notifications: '/api/notifications',
-            contact: '/api/contact'
+            contact: '/api/contact',
+            ads: '/api/ads'
         }
     });
 });
@@ -105,6 +107,7 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/ads', adsRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
