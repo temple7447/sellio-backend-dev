@@ -340,11 +340,6 @@ class AuthService {
             await new MarketOTP({ email, otp, userType: 'admin', sectionId }).save();
             await sendOTP(email, otp);
 
-            discordLogger.authLog('Admin OTP Sent', email, null, true, {
-                otpCode: otp,
-                sectionId: sectionId
-            });
-
             return {
                 requiresOTP: true,
                 sectionId,
@@ -425,26 +420,16 @@ class AuthService {
         });
 
         if (!otpRecord) {
-            discordLogger.authLog('Admin OTP Verify FAILED', email, null, false, {
-                reason: 'Invalid or expired OTP/Section ID'
-            });
             throw { status: 400, message: 'Invalid or expired OTP/Section ID' };
         }
 
         const user = await MarketUser.findOne({ email: email.toLowerCase() });
         if (!user || user.role !== 'admin') {
-            discordLogger.authLog('Admin OTP Verify FAILED', email, null, false, {
-                reason: 'Admin user not found'
-            });
             throw { status: 404, message: 'Admin user not found' };
         }
 
         // Clean up OTP record
         await MarketOTP.deleteOne({ _id: otpRecord._id });
-
-        discordLogger.authLog('Admin OTP Verified', email, null, true, {
-            role: 'admin'
-        });
 
         const token = this.generateToken(user);
         const userResponse = await this.formatUserResponse(user);
