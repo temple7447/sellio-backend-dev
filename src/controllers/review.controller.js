@@ -22,6 +22,16 @@ class ReviewController {
       res.status(error.status || 500).json({ message: error.message || 'Failed to fetch reviews' });
     }
   }
+
+  async listProductReviews(req, res) {
+    try {
+      const result = await reviewService.listProductReviews(req.params.productId, req.query);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error(chalk.red('✗ Fetching product reviews failed:'), error?.message || error);
+      res.status(error.status || 500).json({ message: error.message || 'Failed to fetch reviews' });
+    }
+  }
 }
 
 module.exports = new ReviewController();

@@ -77,6 +77,7 @@ class ReviewService {
 
   async listVendorReviews(sellerId, { page = 1, limit = 20, minRating } = {}) {
     if (!sellerId) throw { status: 400, message: 'sellerId is required' };
+    if (!mongoose.Types.ObjectId.isValid(sellerId)) throw { status: 400, message: 'Invalid sellerId' };
     const sellerObjectId = new mongoose.Types.ObjectId(String(sellerId));
 
     const nPage = Math.max(parseInt(page, 10) || 1, 1);
@@ -111,6 +112,57 @@ class ReviewService {
     ];
 
     const [result] = await MarketReview.aggregate(pipeline);
+    const meta = result.meta[0] || { count: 0, avgRating: null };
+
+    return {
+      success: true,
+      data: result.data,
+      pagination: { page: nPage, limit: nLimit, total: meta.count },
+      summary: { averageRating: meta.avgRating != null ? Number(meta.avgRating.toFixed(2)) : null, totalReviews: meta.count }
+    };
+  }
+
+  async listProductReviews(productId, { page = 1, limit = 20 } = {}) {
+    if (!productId) throw { status: 400, message: 'productId is required' };
+    if (!mongoose.Types.ObjectId.isValid(productId)) throw { status: 400, message: 'Invalid productId' };
+    const productObjectId = new mongoose.Types.ObjectId(String(productId));
+
+    const nPage = Math.max(parseInt(page, 10) || 1, 1);
+    const nLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const skip = (nPage - 1) * nLimit;
+
+    const [result] = await MarketReview.aggregate([
+      { $match: { productId: productObjectId } },
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: 'marketusers',
+          localField: 'customerId',
+          foreignField: '_id',
+          as: 'customer'
+        }
+      },
+      { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          productId: 1,
+          customerId: 1,
+          orderId: 1,
+          rating: 1,
+          comment: 1,
+          createdAt: 1,
+          customer: { fullName: { $concat: [{ $substr: ['$customer.fullName', 0, 1] }, '***'] } }
+        }
+      },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: nLimit }],
+          meta: [{ $group: { _id: null, count: { $sum: 1 }, avgRating: { $avg: '$rating' } } }]
+        }
+      }
+    ]);
+
     const meta = result.meta[0] || { count: 0, avgRating: null };
 
     return {
