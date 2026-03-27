@@ -1,51 +1,51 @@
 const discordLogger = require('../utils/discordLogger');
 
 const actionMappings = {
-    'POST /api/auth/register': { category: 'Auth', action: 'New User Registration' },
-    'POST /api/auth/login': { category: 'Auth', action: 'User Login' },
-    'POST /api/auth/admin/login': { category: 'Auth', action: 'Admin Login' },
-    'POST /api/auth/otp/send': { category: 'Auth', action: 'OTP Sent' },
-    'POST /api/auth/otp/verify': { category: 'Auth', action: 'OTP Verified' },
-    'POST /api/auth/password/forgot': { category: 'Auth', action: 'Password Reset Request' },
-    'POST /api/auth/password/reset': { category: 'Auth', action: 'Password Reset' },
-    'PATCH /api/auth/password': { category: 'Auth', action: 'Password Changed' },
-    'GET /api/wallet/balance': { category: 'Wallet', action: 'Wallet Balance Checked' },
-    'GET /api/wallet/transactions': { category: 'Wallet', action: 'Wallet Transactions Viewed' },
-    'GET /api/wallet/summary': { category: 'Wallet', action: 'Wallet Summary Viewed' },
-    'POST /api/orders': { category: 'Order', action: 'New Order Placed' },
-    'PATCH /api/orders/:id/status': { category: 'Order', action: 'Order Status Updated' },
-    'POST /api/orders/:id/cancel': { category: 'Order', action: 'Order Cancelled' },
-    'POST /api/wallet/deposit/initialize': { category: 'Payment', action: 'Wallet Deposit Initiated' },
-    'GET /api/wallet/deposit/verify/:reference': { category: 'Payment', action: 'Wallet Deposit Verified' },
-    'POST /api/wallet/withdraw': { category: 'Payment', action: 'Withdrawal Requested' },
-    'POST /api/wallet/trusted-badge/purchase': { category: 'Payment', action: 'Trusted Badge Purchased' },
-    'POST /api/wallet/credit': { category: 'Payment', action: 'Wallet Credited (Admin)' },
-    'POST /api/wallet/debit': { category: 'Payment', action: 'Wallet Debited (Admin)' },
-    'GET /api/products/public': { category: 'Product', action: 'Products Browsed' },
-    'GET /api/products/seller/products': { category: 'Product', action: 'Seller Products Viewed' },
-    'POST /api/products': { category: 'Product', action: 'New Product Created' },
-    'PATCH /api/products/:id': { category: 'Product', action: 'Product Updated' },
-    'DELETE /api/products/:id': { category: 'Product', action: 'Product Deleted' },
-    'POST /api/cart/checkout': { category: 'Cart', action: 'Cart Checkout' },
-    'POST /api/cart/clear': { category: 'Cart', action: 'Cart Cleared' },
-    'GET /api/cart': { category: 'Cart', action: 'Cart Viewed' },
-    'POST /api/addresses': { category: 'Address', action: 'New Address Added' },
-    'PATCH /api/addresses/:id': { category: 'Address', action: 'Address Updated' },
-    'DELETE /api/addresses/:id': { category: 'Address', action: 'Address Deleted' },
-    'GET /api/addresses': { category: 'Address', action: 'Addresses Viewed' },
-    'POST /api/admin/sellers/:sellerId/trusted-badge': { category: 'Admin', action: 'Seller Trusted Badge Toggled' },
-    'POST /api/admin/users/:userId/activate': { category: 'Admin', action: 'User Activated' },
-    'POST /api/admin/users/:userId/deactivate': { category: 'Admin', action: 'User Deactivated' },
-    'POST /api/admin/orders/:orderId/approve': { category: 'Admin', action: 'Order Approved' },
-    'POST /api/admin/orders/:orderId/reject': { category: 'Admin', action: 'Order Rejected' },
-    'POST /api/admin/withdrawals/:transactionId/approve': { category: 'Admin', action: 'Withdrawal Approved' },
-    'POST /api/admin/withdrawals/:transactionId/decline': { category: 'Admin', action: 'Withdrawal Declined' },
-    'POST /api/referrals/claim': { category: 'Referral', action: 'Referral Claimed' },
-    'POST /api/wishlist': { category: 'Wishlist', action: 'Added to Wishlist' },
-    'DELETE /api/wishlist/:productId': { category: 'Wishlist', action: 'Removed from Wishlist' },
-    'GET /api/wishlist': { category: 'Wishlist', action: 'Wishlist Viewed' },
-    'POST /api/reviews': { category: 'Review', action: 'Review Submitted' },
-    'GET /api/reviews/product/:productId': { category: 'Review', action: 'Product Reviews Viewed' },
+    'POST /api/auth/register': { category: '👤 New User', action: 'Someone just signed up' },
+    'POST /api/auth/login': { category: '🔑 Login', action: 'User logged into their account' },
+    'POST /api/auth/admin/login': { category: '🔐 Admin', action: 'Admin logged in' },
+    'POST /api/auth/otp/send': { category: '📧 OTP', action: 'Verification code sent' },
+    'POST /api/auth/otp/verify': { category: '✅ Verification', action: 'Account verified successfully' },
+    'POST /api/auth/password/forgot': { category: '🔐 Password', action: 'Password reset requested' },
+    'POST /api/auth/password/reset': { category: '🔐 Password', action: 'Password reset completed' },
+    'PATCH /api/auth/password': { category: '🔐 Password', action: 'Password changed' },
+    'GET /api/wallet/balance': { category: '💰 Wallet', action: 'Checked wallet balance' },
+    'GET /api/wallet/transactions': { category: '💰 Wallet', action: 'Viewed transaction history' },
+    'GET /api/wallet/summary': { category: '💰 Wallet', action: 'Viewed wallet summary' },
+    'POST /api/orders': { category: '🛒 Order', action: 'New order placed' },
+    'PATCH /api/orders/:id/status': { category: '📦 Order', action: 'Order status changed' },
+    'POST /api/orders/:id/cancel': { category: '❌ Order', action: 'Order cancelled' },
+    'POST /api/wallet/deposit/initialize': { category: '💳 Deposit', action: 'Started adding money to wallet' },
+    'GET /api/wallet/deposit/verify/:reference': { category: '💳 Deposit', action: 'Wallet deposit completed' },
+    'POST /api/wallet/withdraw': { category: '🏧 Withdrawal', action: 'Requested to withdraw money' },
+    'POST /api/wallet/trusted-badge/purchase': { category: '⭐ Badge', action: 'Purchased trusted seller badge' },
+    'POST /api/wallet/credit': { category: '💰 Wallet', action: 'Money added to wallet (Admin)' },
+    'POST /api/wallet/debit': { category: '💰 Wallet', action: 'Money deducted from wallet (Admin)' },
+    'GET /api/products/public': { category: '🛍️ Shop', action: 'Browsed products' },
+    'GET /api/products/seller/products': { category: '📦 Products', action: 'Seller viewed their products' },
+    'POST /api/products': { category: '➕ Product', action: 'Listed a new product for sale' },
+    'PATCH /api/products/:id': { category: '✏️ Product', action: 'Updated a product' },
+    'DELETE /api/products/:id': { category: '🗑️ Product', action: 'Deleted a product' },
+    'POST /api/cart/checkout': { category: '🛒 Cart', action: 'Completed checkout' },
+    'POST /api/cart/clear': { category: '🛒 Cart', action: 'Cleared cart' },
+    'GET /api/cart': { category: '🛒 Cart', action: 'Viewed cart' },
+    'POST /api/addresses': { category: '📍 Address', action: 'Added new delivery address' },
+    'PATCH /api/addresses/:id': { category: '📍 Address', action: 'Updated delivery address' },
+    'DELETE /api/addresses/:id': { category: '🗑️ Address', action: 'Removed delivery address' },
+    'GET /api/addresses': { category: '📍 Address', action: 'Viewed delivery addresses' },
+    'POST /api/admin/sellers/:sellerId/trusted-badge': { category: '⭐ Badge', action: 'Trusted badge updated for seller' },
+    'POST /api/admin/users/:userId/activate': { category: '👤 User', action: 'User account activated' },
+    'POST /api/admin/users/:userId/deactivate': { category: '👤 User', action: 'User account deactivated' },
+    'POST /api/admin/orders/:orderId/approve': { category: '✅ Order', action: 'Order approved' },
+    'POST /api/admin/orders/:orderId/reject': { category: '❌ Order', action: 'Order rejected' },
+    'POST /api/admin/withdrawals/:transactionId/approve': { category: '✅ Withdrawal', action: 'Withdrawal request approved' },
+    'POST /api/admin/withdrawals/:transactionId/decline': { category: '❌ Withdrawal', action: 'Withdrawal request declined' },
+    'POST /api/referrals/claim': { category: '🎁 Referral', action: 'Claimed referral reward' },
+    'POST /api/wishlist': { category: '❤️ Wishlist', action: 'Added item to wishlist' },
+    'DELETE /api/wishlist/:productId': { category: '💔 Wishlist', action: 'Removed item from wishlist' },
+    'GET /api/wishlist': { category: '❤️ Wishlist', action: 'Viewed wishlist' },
+    'POST /api/reviews': { category: '⭐ Review', action: 'Left a review' },
+    'GET /api/reviews/product/:productId': { category: '⭐ Review', action: 'Viewed product reviews' },
 };
 
 const getActionInfo = (method, path) => {
@@ -76,33 +76,48 @@ const requestLogger = (req, res, next) => {
         const isSuccess = statusCode >= 200 && statusCode < 400;
         
         if (actionInfo) {
-            const details = {
-                Status: isSuccess ? 'Success' : 'Failed',
-                ResponseTime: `${responseTime}ms`,
-                IP: req.ip || req.connection?.remoteAddress || 'Unknown',
-            };
+            const details = {};
+            
+            if (isSuccess) {
+                details.Status = '✅ Done';
+            } else {
+                details.Status = '❌ Failed';
+            }
+            
+            details.Time = `${responseTime}ms`;
             
             if (req.user?.email) {
                 details.User = req.user.email;
             }
             
             if (req.body?.amount) {
-                details.Amount = `₦${req.body.amount}`;
+                details.Amount = `₦${Number(req.body.amount).toLocaleString()}`;
             }
             
             if (req.body?.productId || req.params?.id) {
-                details.ProductID = req.body.productId || req.params.id;
+                details.Item = req.body.productId || req.params.id;
+            }
+            
+            if (req.body?.comment) {
+                details.Review = req.body.comment.substring(0, 50) + (req.body.comment.length > 50 ? '...' : '');
+            }
+            
+            if (req.body?.rating) {
+                details.Rating = req.body.rating + ' ⭐';
             }
             
             const title = isSuccess 
-                ? `✅ ${actionInfo.category}: ${actionInfo.action}`
-                : `❌ ${actionInfo.category}: ${actionInfo.action} Failed`;
+                ? `${actionInfo.category}: ${actionInfo.action}`
+                : `${actionInfo.category}: ${actionInfo.action} - Error`;
             
-            discordLogger.info(title, details);
+            if (isSuccess) {
+                discordLogger.success(title, details);
+            } else {
+                discordLogger.error(title, details);
+            }
         } else if (statusCode >= 400) {
             discordLogger.error(`${req.method} ${req.path} - Error ${statusCode}`, {
-                IP: req.ip || req.connection?.remoteAddress || 'Unknown',
-                ResponseTime: `${responseTime}ms`,
+                Time: `${responseTime}ms`,
             });
         }
         
