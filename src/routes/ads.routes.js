@@ -11,6 +11,34 @@ const adsController = require('../controllers/ads.controller');
 router.get('/placements', adsController.getPlacementOptions);
 
 /**
+ * @route   GET /api/ads/admin/placements
+ * @desc    Get all placements (including inactive)
+ * @access  Private (Admin)
+ */
+router.get('/admin/placements', auth, isAdmin, adsController.getAllPlacements);
+
+/**
+ * @route   POST /api/ads/admin/placements
+ * @desc    Create a new ad placement
+ * @access  Private (Admin)
+ */
+router.post('/admin/placements', auth, isAdmin, adsController.createPlacement);
+
+/**
+ * @route   PUT /api/ads/admin/placements/:id
+ * @desc    Update an ad placement
+ * @access  Private (Admin)
+ */
+router.put('/admin/placements/:id', auth, isAdmin, adsController.updatePlacement);
+
+/**
+ * @route   DELETE /api/ads/admin/placements/:id
+ * @desc    Delete an ad placement
+ * @access  Private (Admin)
+ */
+router.delete('/admin/placements/:id', auth, isAdmin, adsController.deletePlacement);
+
+/**
  * @route   GET /api/ads/active/:placement
  * @desc    Get active ads for a specific placement (for frontend display)
  * @access  Public

@@ -586,10 +586,17 @@ class OrderService {
         // Ensure numeric pagination values even if query params come in as strings
         const page = parseInt(query.page, 10) || 1;
         const limit = parseInt(query.limit, 10) || 10;
-        const { status } = query;
+        const { status, paymentStatus } = query;
         const skip = (page - 1) * limit;
 
-        const filter = { customerId, 'payment.status': 'completed' };
+        // Include all payment statuses except 'failed' and 'refunded'
+        const filter = { 
+            customerId,
+            'payment.status': { $in: ['pending', 'pending_verification', 'processing', 'completed'] }
+        };
+        if (paymentStatus) {
+            filter['payment.status'] = paymentStatus;
+        }
         if (status) filter.status = status;
 
         const [orders, total] = await Promise.all([
@@ -760,6 +767,12 @@ class OrderService {
 
         if (item.status !== 'confirmed' && item.status !== 'processing') {
             throw { status: 400, message: `Cannot upload proof for item with status ${item.status}` };
+        }
+
+        // Check if payment is verified
+        const paymentCheckOrder = await MarketOrder.findById(item.orderId);
+        if (paymentCheckOrder && !['completed', 'processing'].includes(paymentCheckOrder.payment.status)) {
+            throw { status: 400, message: 'Cannot ship item - payment is not yet verified' };
         }
 
         const trackingNumber = generateTrackingNumber();
@@ -1155,11 +1168,12 @@ class OrderService {
 
         try {
             // Find items for this seller, populating order and product info
+            // Only show orders where payment is completed or processing
             const [sellerItems, total] = await Promise.all([
                 MarketOrderItem.find(itemFilter)
                     .populate({
                         path: 'orderId',
-                        match: { 'payment.status': 'completed' },
+                        match: { 'payment.status': { $in: ['processing', 'completed'] } },
                         populate: { path: 'customerId', select: 'email fullName' }
                     })
                     .populate('productId', 'name images price')
@@ -1172,7 +1186,7 @@ class OrderService {
 
             // Group items by order for display (while maintaining API contract)
             const formattedOrders = sellerItems
-                .filter(item => item.orderId) // Only include items where order payment is completed (due to match in populate)
+                .filter(item => item.orderId) // Only include items where order payment is completed/processing
                 .map(item => {
                     const order = item.orderId || {};
                     const product = item.productId || {};
@@ -1311,7 +1325,10 @@ class OrderService {
             } = query;
 
             const skip = (page - 1) * limit;
-            const filter = { 'payment.status': 'completed' };
+            // Include all payment statuses except 'failed' and 'refunded'
+            const filter = { 
+                'payment.status': { $in: ['pending', 'pending_verification', 'processing', 'completed'] }
+            };
             if (status) filter.status = status;
 
             if (search) {

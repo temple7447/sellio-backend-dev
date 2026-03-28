@@ -1,4 +1,5 @@
 const { AdCampaign, AD_PLACEMENTS } = require('../models/AdCampaign');
+const AdPlacement = require('../models/AdPlacement');
 const walletService = require('./wallet.service');
 const chalk = require('chalk');
 
@@ -8,22 +9,127 @@ class AdsService {
     }
 
     /**
-     * Get all available ad placement options
+     * Get all available ad placement options (from database or fallback to defaults)
      */
-    getPlacementOptions() {
-        return Object.entries(AD_PLACEMENTS).map(([key, value]) => ({
-            key,
-            label: value.label,
-            dailyRate: value.dailyRate,
-            description: value.description
-        }));
+    async getPlacementOptions() {
+        let placements = await AdPlacement.find({ isActive: true }).lean();
+        
+        if (placements.length === 0) {
+            placements = Object.entries(AD_PLACEMENTS).map(([key, value]) => ({
+                key,
+                label: value.label,
+                dailyRate: value.dailyRate,
+                description: value.description,
+                minimumBudget: 1000
+            }));
+        }
+        
+        return placements;
+    }
+
+    /**
+     * Get placement config for a specific key
+     */
+    async getPlacementConfig(key) {
+        const placement = await AdPlacement.findOne({ key, isActive: true });
+        
+        if (placement) {
+            return {
+                label: placement.label,
+                dailyRate: placement.dailyRate,
+                description: placement.description,
+                minimumBudget: placement.minimumBudget
+            };
+        }
+        
+        if (AD_PLACEMENTS[key]) {
+            return {
+                label: AD_PLACEMENTS[key].label,
+                dailyRate: AD_PLACEMENTS[key].dailyRate,
+                description: AD_PLACEMENTS[key].description,
+                minimumBudget: 1000
+            };
+        }
+        
+        return null;
+    }
+
+    /**
+     * Admin: Get all placements (including inactive)
+     */
+    async getAllPlacements() {
+        return AdPlacement.find().sort({ key: 1 }).lean();
+    }
+
+    /**
+     * Admin: Create a new placement
+     */
+    async createPlacement(data) {
+        const { key, label, dailyRate, description, minimumBudget } = data;
+        
+        const existing = await AdPlacement.findOne({ key: key.toLowerCase() });
+        if (existing) {
+            throw { status: 400, message: 'Placement with this key already exists' };
+        }
+        
+        const placement = new AdPlacement({
+            key: key.toLowerCase().replace(/\s+/g, '_'),
+            label,
+            dailyRate,
+            description,
+            minimumBudget: minimumBudget || 1000,
+            isActive: true
+        });
+        
+        await placement.save();
+        console.log(chalk.green(`✓ Ad placement created: ${key}`));
+        
+        return placement;
+    }
+
+    /**
+     * Admin: Update a placement
+     */
+    async updatePlacement(placementId, data) {
+        const placement = await AdPlacement.findById(placementId);
+        
+        if (!placement) {
+            throw { status: 404, message: 'Placement not found' };
+        }
+        
+        if (data.label) placement.label = data.label;
+        if (data.dailyRate !== undefined) placement.dailyRate = data.dailyRate;
+        if (data.description !== undefined) placement.description = data.description;
+        if (data.minimumBudget !== undefined) placement.minimumBudget = data.minimumBudget;
+        if (data.isActive !== undefined) placement.isActive = data.isActive;
+        
+        await placement.save();
+        console.log(chalk.green(`✓ Ad placement updated: ${placement.key}`));
+        
+        return placement;
+    }
+
+    /**
+     * Admin: Delete a placement
+     */
+    async deletePlacement(placementId) {
+        const placement = await AdPlacement.findById(placementId);
+        
+        if (!placement) {
+            throw { status: 404, message: 'Placement not found' };
+        }
+        
+        await AdPlacement.deleteOne({ _id: placementId });
+        console.log(chalk.red(`✗ Ad placement deleted: ${placement.key}`));
+        
+        return { success: true, message: 'Placement deleted successfully' };
     }
 
     /**
      * Create a new ad campaign and deduct from wallet
      */
     async createCampaign(sellerId, { placement, durationDays }) {
-        const placementConfig = AD_PLACEMENTS[placement];
+        const placementConfig = await this.getPlacementConfig(placement);
         if (!placementConfig) {
             throw { status: 400, message: 'Invalid ad placement' };
         }
@@ -33,12 +139,13 @@ class AdsService {
         }
 
         const totalBudget = durationDays * placementConfig.dailyRate;
+        const minBudget = placementConfig.minimumBudget || 1000;
 
-        if (totalBudget < 1000) {
-            const minDays = Math.ceil(1000 / placementConfig.dailyRate);
+        if (totalBudget < minBudget) {
+            const minDays = Math.ceil(minBudget / placementConfig.dailyRate);
             throw {
                 status: 400,
-                message: `Minimum campaign budget is ₦1,000. Minimum duration for this placement is ${minDays} days.`
+                message: `Minimum campaign budget is ₦${minBudget}. Minimum duration for this placement is ${minDays} days.`
             };
         }
 
@@ -161,7 +268,8 @@ class AdsService {
      * Get active ads for a specific placement (for frontend display)
      */
     async getActiveAdsByPlacement(placement) {
-        if (!AD_PLACEMENTS[placement]) {
+        const config = await this.getPlacementConfig(placement);
+        if (!config) {
             throw { status: 400, message: 'Invalid placement' };
         }
 
@@ -181,7 +289,8 @@ class AdsService {
      * Returns products belonging to sellers with an active campaign on that placement
      */
     async getSponsoredProducts(placement, limit = 10) {
-        if (!AD_PLACEMENTS[placement]) {
+        const config = await this.getPlacementConfig(placement);
+        if (!config) {
             throw { status: 400, message: 'Invalid placement' };
         }
 

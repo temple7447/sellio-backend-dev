@@ -8,10 +8,75 @@ class AdsController {
      */
     async getPlacementOptions(req, res) {
         try {
-            const placements = adsService.getPlacementOptions();
+            const placements = await adsService.getPlacementOptions();
             res.json({ status: 'success', placements });
         } catch (error) {
             console.error(chalk.red('✗ Get placements failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * GET /api/ads/admin/placements
+     * Admin — returns all placements (including inactive)
+     */
+    async getAllPlacements(req, res) {
+        try {
+            const placements = await adsService.getAllPlacements();
+            res.json({ status: 'success', placements });
+        } catch (error) {
+            console.error(chalk.red('✗ Get all placements failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * POST /api/ads/admin/placements
+     * Admin — create a new placement
+     */
+    async createPlacement(req, res) {
+        try {
+            const { key, label, dailyRate, description, minimumBudget } = req.body;
+            
+            if (!key || !label || !dailyRate) {
+                return res.status(400).json({ message: 'key, label, and dailyRate are required' });
+            }
+
+            const placement = await adsService.createPlacement({ key, label, dailyRate, description, minimumBudget });
+            console.log(chalk.green(`✓ Ad placement created by admin: ${key}`));
+            res.status(201).json({ status: 'success', placement });
+        } catch (error) {
+            console.error(chalk.red('✗ Create placement failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * PUT /api/ads/admin/placements/:id
+     * Admin — update a placement
+     */
+    async updatePlacement(req, res) {
+        try {
+            const placement = await adsService.updatePlacement(req.params.id, req.body);
+            console.log(chalk.green(`✓ Ad placement updated by admin: ${placement.key}`));
+            res.json({ status: 'success', placement });
+        } catch (error) {
+            console.error(chalk.red('✗ Update placement failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * DELETE /api/ads/admin/placements/:id
+     * Admin — delete a placement
+     */
+    async deletePlacement(req, res) {
+        try {
+            const result = await adsService.deletePlacement(req.params.id);
+            console.log(chalk.red(`✗ Ad placement deleted by admin: ${req.params.id}`));
+            res.json({ status: 'success', ...result });
+        } catch (error) {
+            console.error(chalk.red('✗ Delete placement failed:', error.message));
             res.status(error.status || 500).json({ message: error.message });
         }
     }
