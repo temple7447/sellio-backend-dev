@@ -70,6 +70,9 @@ router.get('/admin/dashboard', auth, isAdmin, orderController.getAdminDashboard)
 // Admin: Verify direct transfer payment
 router.post('/admin/:orderId/verify-payment', auth, isAdmin, orderController.adminVerifyPayment);
 
+// Admin: Cancel order and refund buyer (for underpayment cases)
+router.post('/admin/:orderId/cancel-refund', auth, isAdmin, orderController.adminCancelAndRefund);
+
 // General order detail route for authenticated users (Buyer, Seller, Admin)
 router.get('/:orderId', auth, orderController.getOrderDetail);
 

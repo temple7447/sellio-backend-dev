@@ -1018,7 +1018,7 @@ class OrderService {
         }
     }
 
-    async uploadPaymentProof(customerId, orderId, proofUrl) {
+    async uploadPaymentProof(customerId, orderId, proofUrl, transferredAmount) {
         const order = await MarketOrder.findOne({
             _id: orderId,
             customerId
@@ -1036,12 +1036,29 @@ class OrderService {
             throw { status: 400, message: 'This order does not require direct transfer payment' };
         }
 
+        // Validate transferred amount if provided
+        if (transferredAmount !== undefined) {
+            const expectedAmount = order.totals.final;
+            const difference = Math.abs(expectedAmount - transferredAmount);
+            
+            // Allow tolerance of up to ₦1000 difference
+            if (difference > 1000) {
+                throw { 
+                    status: 400, 
+                    message: `Transferred amount (₦${transferredAmount.toLocaleString()}) does not match order total (₦${expectedAmount.toLocaleString()}). Difference: ₦${difference.toLocaleString()}`
+                };
+            }
+        }
+
         // Get customer details
         const customer = await MarketUser.findById(customerId);
 
         order.payment.proofUrl = proofUrl;
         order.payment.status = 'pending_verification';
         order.payment.method = 'direct_transfer';
+        if (transferredAmount) {
+            order.payment.transferredAmount = transferredAmount;
+        }
         await order.save();
 
         // Send email notification to customer
@@ -1091,8 +1108,61 @@ class OrderService {
             throw { status: 400, message: 'This order is not pending verification' };
         }
 
+        const expectedAmount = order.totals.final;
+        const transferredAmount = order.payment.transferredAmount || expectedAmount;
+        const amountDifference = expectedAmount - transferredAmount;
+        
+        // Check if transferred amount is within acceptable range (tolerance of ₦1000)
+        const isWithinTolerance = amountDifference >= 0 && amountDifference <= 1000;
+
         if (status === 'approved') {
+            // Handle partial payment case
+            if (transferredAmount < expectedAmount && isWithinTolerance) {
+                // Refund the difference to buyer's wallet (after deducting ₦100 fee)
+                const processingFee = 100;
+                const refundAmount = amountDifference - processingFee;
+                const customer = await MarketUser.findById(order.customerId);
+                
+                if (customer && refundAmount > 0) {
+                    await walletService.credit(
+                        customer._id,
+                        refundAmount,
+                        `Refund: Overpayment for order ${order._id} (Fee: ₦${processingFee})`,
+                        {
+                            type: 'refund',
+                            orderId: order._id,
+                            originalAmount: expectedAmount,
+                            transferredAmount: transferredAmount,
+                            refundedAmount: refundAmount,
+                            processingFee: processingFee
+                        }
+                    );
+                    
+                    console.log(chalk.blue(`✓ Refunded ₦${refundAmount.toLocaleString()} to buyer for overpayment (Fee: ₦${processingFee})`));
+                    
+                    // Update order totals to reflect actual amount received
+                    order.totals.final = transferredAmount;
+                    order.payment.refundedAmount = refundAmount;
+                    order.payment.processingFee = processingFee;
+                    
+                    // Send refund email
+                    try {
+                        const emailService = require('./email.service');
+                        const emailHtml = emailService.walletCredited(
+                            customer.email,
+                            customer.fullName || 'Customer',
+                            refundAmount,
+                            `Refund for order ${order._id}`
+                        );
+                        await emailService.sendEmail(customer.email, '💰 Refund Processed - Wallet Credited', emailHtml);
+                    } catch (emailError) {
+                        console.log(chalk.yellow(`⚠ Failed to send refund email: ${emailError.message}`));
+                    }
+                }
+            }
+
             order.payment.status = 'completed';
+            order.payment.receivedAmount = transferredAmount;
             order.status = 'processing';
             await order.save();
 
@@ -1125,13 +1195,24 @@ class OrderService {
 
             return {
                 success: true,
-                message: 'Payment verified successfully. Order is now being processed.',
+                message: amountDifference > 0 && amountDifference <= 1000 
+                    ? `Payment verified. ₦${amountDifference.toLocaleString()} refund credited to buyer wallet.`
+                    : 'Payment verified successfully. Order is now being processed.',
+                amountInfo: {
+                    expected: expectedAmount,
+                    transferred: transferredAmount,
+                    refunded: amountDifference > 0 && amountDifference <= 1000 ? amountDifference : 0,
+                    finalAmount: order.totals.final
+                },
                 order: {
                     id: order._id,
                     status: order.status,
+                    totals: order.totals,
                     payment: {
                         status: order.payment.status,
                         method: order.payment.method,
+                        receivedAmount: order.payment.receivedAmount,
+                        refundedAmount: order.payment.refundedAmount,
                         verifiedAt: new Date(),
                         verifiedBy: adminId
                     }
@@ -1140,11 +1221,17 @@ class OrderService {
         } else {
             order.payment.status = 'failed';
             order.payment.proofUrl = null;
+            order.payment.transferredAmount = null;
             await order.save();
 
             return {
                 success: true,
                 message: 'Payment rejected. Customer needs to upload a new payment proof.',
+                amountInfo: {
+                    expected: expectedAmount,
+                    transferred: transferredAmount,
+                    match: false
+                },
                 order: {
                     id: order._id,
                     status: order.status,
@@ -1155,6 +1242,113 @@ class OrderService {
                 }
             };
         }
+    }
+
+    /**
+     * Admin: Cancel order and refund buyer (for underpayment cases)
+     */
+    async adminCancelAndRefund(orderId, adminId, refundAmount = null) {
+        const order = await MarketOrder.findById(orderId);
+
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        if (order.payment.method !== 'direct_transfer') {
+            throw { status: 400, message: 'This order was not paid via direct transfer' };
+        }
+
+        if (order.payment.status !== 'pending_verification') {
+            throw { status: 400, message: 'This order cannot be cancelled' };
+        }
+
+        const transferredAmount = order.payment.transferredAmount || 0;
+        const adminInputAmount = refundAmount;
+        
+        // Admin must provide the amount they want to refund
+        if (!adminInputAmount || adminInputAmount <= 0) {
+            throw { status: 400, message: 'Please provide the amount to refund' };
+        }
+
+        // Deduct ₦100 processing fee
+        const processingFee = 100;
+        const refundToBuyer = adminInputAmount - processingFee;
+        
+        if (refundToBuyer <= 0) {
+            throw { status: 400, message: 'Refund amount must be greater than ₦100' };
+        }
+
+        // Refund to buyer's wallet
+        if (refundToBuyer > 0) {
+            const customer = await MarketUser.findById(order.customerId);
+            
+            if (customer) {
+                await walletService.credit(
+                    customer._id,
+                    refundToBuyer,
+                    `Refund: Order cancelled - Order ${order._id} (Admin confirmed: ₦${adminInputAmount.toLocaleString()}, Fee: ₦${processingFee})`,
+                    {
+                        type: 'refund',
+                        orderId: order._id,
+                        reason: 'underpayment_cancelled',
+                        adminInputAmount,
+                        processingFee,
+                        refundToBuyer
+                    }
+                );
+                
+                console.log(chalk.blue(`✓ Refunded ₦${refundToBuyer.toLocaleString()} to buyer (Admin: ₦${adminInputAmount.toLocaleString()}, Fee: ₦${processingFee})`));
+                
+                // Send refund email
+                try {
+                    const emailService = require('./email.service');
+                    const emailHtml = emailService.walletCredited(
+                        customer.email,
+                        customer.fullName || 'Customer',
+                        refundToBuyer,
+                        `Order cancelled - Refund for order ${order._id}`
+                    );
+                    await emailService.sendEmail(customer.email, '💰 Order Cancelled - Refund Processed', emailHtml);
+                } catch (emailError) {
+                    console.log(chalk.yellow(`⚠ Failed to send refund email: ${emailError.message}`));
+                }
+            }
+        }
+
+        // Restore product inventory
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const orderItems = await MarketOrderItem.find({ orderId: order._id });
+        
+        const MarketProduct = require('../models/MarketProduct');
+        for (const item of orderItems) {
+            await MarketProduct.updateOne(
+                { _id: item.productId },
+                { $inc: { 'inventory.quantity': item.quantity } }
+            );
+        }
+
+        // Update order status
+        order.status = 'cancelled';
+        order.payment.status = 'refunded';
+        order.payment.refundedAmount = refundToBuyer;
+        order.payment.adminInputAmount = adminInputAmount;
+        order.payment.processingFee = processingFee;
+        order.payment.cancelledBy = adminId;
+        order.payment.cancelledAt = new Date();
+        await order.save();
+
+        return {
+            success: true,
+            message: `Order cancelled. ₦${transferredAmount.toLocaleString()} refunded to buyer's wallet.`,
+            order: {
+                id: order._id,
+                status: order.status,
+                payment: {
+                    status: order.payment.status,
+                    refundedAmount: transferredAmount
+                }
+            }
+        };
     }
 
     async getSellerOrders(sellerId, query = {}) {

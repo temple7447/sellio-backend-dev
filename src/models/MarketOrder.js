@@ -33,6 +33,9 @@ const orderSchema = new mongoose.Schema({
         },
         transactionId: String,
         proofUrl: String,
+        transferredAmount: Number,
+        receivedAmount: Number,
+        refundedAmount: Number,
         metadata: {}
     },
     shipping: {

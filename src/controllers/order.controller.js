@@ -151,6 +151,9 @@ class OrderController {
                 });
             }
 
+            const { amount } = req.body;
+            const transferredAmount = amount ? parseFloat(amount) : undefined;
+
             console.log(chalk.blue('→ Uploading payment proof to Cloudinary...'));
             const uploadResult = await uploadToCloudinary(req.file, 'payment_proofs');
             const proofUrl = uploadResult.secure_url;
@@ -158,7 +161,8 @@ class OrderController {
             const result = await orderService.uploadPaymentProof(
                 req.user._id,
                 req.params.orderId,
-                proofUrl
+                proofUrl,
+                transferredAmount
             );
 
             console.log(chalk.green('✓ Payment proof uploaded successfully'));
@@ -262,6 +266,36 @@ class OrderController {
             res.status(error.status || 400).json({
                 success: false,
                 message: error.message || 'Payment verification failed'
+            });
+        }
+    }
+
+    async adminCancelAndRefund(req, res) {
+        try {
+            const { amount } = req.body;
+            
+            if (!amount) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Please provide the amount to refund'
+                });
+            }
+
+            const refundAmount = parseFloat(amount);
+
+            const result = await orderService.adminCancelAndRefund(
+                req.params.orderId,
+                req.user._id,
+                refundAmount
+            );
+
+            console.log(chalk.red(`✗ Order cancelled and refunded: ${req.params.orderId}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin cancel and refund failed:'), error);
+            res.status(error.status || 400).json({
+                success: false,
+                message: error.message || 'Cancel and refund failed'
             });
         }
     }
