@@ -7,6 +7,7 @@ const paystackService = require('../utils/paystack');
 const mongoose = require('mongoose');  // Add this import at the top
 const chalk = require('chalk');
 const RewardSettings = require('../models/RewardSettings');
+const walletService = require('./wallet.service');
 
 const generateTrackingNumber = () => {
     const timestamp = Date.now().toString(36).toUpperCase();
