@@ -144,7 +144,21 @@ class AdsController {
             const result = await adsService.getAllCampaigns(req.query);
             res.json({ status: 'success', ...result });
         } catch (error) {
-            console.error(chalk.red('✗ Admin get all campaigns failed:', error.message));
+            console.error(chalk.red('✗ Admin get all campaigns failed:'), error.message);
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    /**
+     * POST /api/ads/track-click/:campaignId
+     * Public — track a click on an ad (for frontend to call when user clicks advertised product)
+     */
+    async trackClick(req, res) {
+        try {
+            const result = await adsService.trackClick(req.params.campaignId);
+            res.json({ status: 'success', ...result });
+        } catch (error) {
+            console.error(chalk.red('✗ Track click failed:'), error.message);
             res.status(error.status || 500).json({ message: error.message });
         }
     }

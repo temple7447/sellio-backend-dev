@@ -25,6 +25,13 @@ router.get('/active/:placement', adsController.getActiveAdsByPlacement);
 router.get('/sponsored-products/:placement', adsController.getSponsoredProducts);
 
 /**
+ * @route   POST /api/ads/track-click/:campaignId
+ * @desc    Track a click on an advertised product
+ * @access  Public
+ */
+router.post('/track-click/:campaignId', adsController.trackClick);
+
+/**
  * @route   GET /api/ads/admin/campaigns
  * @desc    Get all campaigns across the system
  * @access  Private (Admin)

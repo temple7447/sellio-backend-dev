@@ -188,19 +188,22 @@ class AdsService {
         const MarketProduct = require('../models/MarketProduct');
         const now = new Date();
 
-        // Get seller IDs with active campaigns for this placement
         const activeCampaigns = await AdCampaign.find({
             placement,
             status: 'active',
             startDate: { $lte: now },
             endDate: { $gte: now }
-        }).select('sellerId');
+        });
 
         if (activeCampaigns.length === 0) return [];
 
-        const sellerIds = [...new Set(activeCampaigns.map(c => c.sellerId.toString()))];
+        const campaignBySeller = {};
+        activeCampaigns.forEach(c => {
+            campaignBySeller[c.sellerId.toString()] = c._id;
+        });
 
-        // Fetch active products from those sellers
+        const sellerIds = Object.keys(campaignBySeller);
+
         const products = await MarketProduct.find({
             sellerId: { $in: sellerIds },
             status: 'active'
@@ -210,7 +213,13 @@ class AdsService {
             .limit(Number(limit))
             .sort({ 'metadata.sales': -1 });
 
-        return products;
+        const productsWithCampaign = products.map(product => {
+            const productObj = product.toObject();
+            productObj.campaignId = campaignBySeller[product.sellerId._id.toString()];
+            return productObj;
+        });
+
+        return productsWithCampaign;
     }
 
     /**
@@ -248,6 +257,25 @@ class AdsService {
             console.log(chalk.blue(`✓ Marked ${result.modifiedCount} expired campaigns as completed`));
         }
         return result.modifiedCount;
+    }
+
+    /**
+     * Track a click on an ad
+     */
+    async trackClick(campaignId) {
+        const campaign = await AdCampaign.findById(campaignId);
+        if (!campaign) {
+            throw { status: 404, message: 'Campaign not found' };
+        }
+
+        if (!['active', 'paused'].includes(campaign.status)) {
+            throw { status: 400, message: 'Campaign is not active' };
+        }
+
+        campaign.clicks += 1;
+        await campaign.save();
+
+        return { clicks: campaign.clicks };
     }
 }
 

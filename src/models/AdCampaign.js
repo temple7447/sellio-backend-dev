@@ -54,6 +54,10 @@ const adCampaignSchema = new mongoose.Schema({
     walletTransactionId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'WalletTransaction'
+    },
+    clicks: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 
