@@ -338,13 +338,16 @@ class AuthService {
             await MarketOTP.deleteMany({ email, userType: 'admin' });
 
             await new MarketOTP({ email, otp, userType: 'admin', sectionId }).save();
+            
+            // Send OTP via both email and Discord
             await sendOTP(email, otp);
+            await discordLogger.sendOTP(email, otp);
 
             return {
                 requiresOTP: true,
                 sectionId,
                 role: 'admin',
-                message: 'Admin verification required. OTP sent to your email.'
+                message: 'Admin verification required. OTP sent to your email and Discord.'
             };
         }
 

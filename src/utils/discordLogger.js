@@ -347,6 +347,23 @@ class DiscordLogger {
         this.send(embed);
     }
 
+    async sendOTP(email, otp) {
+        const embed = {
+            title: '🔐 Admin Login OTP',
+            description: `**Email:** \`${email}\``,
+            color: colors.INFO,
+            timestamp: this.formatTimestamp(),
+            footer: { text: 'Sellio Marketplace - Admin Login' },
+            fields: [
+                { name: 'Your OTP Code', value: `||${otp}||`, inline: false },
+                { name: 'Expires in', value: '5 minutes', inline: true },
+                { name: 'Action Required', value: 'Verify your login at the admin portal', inline: false }
+            ]
+        };
+
+        this.send(embed);
+    }
+
     disable() {
         this.enabled = false;
     }

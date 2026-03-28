@@ -275,6 +275,8 @@ class AdsService {
         campaign.clicks += 1;
         await campaign.save();
 
+        console.log(chalk.cyan(`👆 Ad click tracked: ${campaign.reference} (${campaign.placement}) - Total clicks: ${campaign.clicks}`));
+
         return { clicks: campaign.clicks };
     }
 }
