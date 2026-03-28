@@ -918,7 +918,40 @@ class OrderService {
             const MarketOrderItem = require('../models/MarketOrderItem');
             const items = await MarketOrderItem.find({ orderId: order._id });
 
-            // Initialize Paystack transaction
+            // Check if amount exceeds 800,000 Naira - use direct transfer
+            if (order.totals.final > 800000) {
+                return {
+                    payment: {
+                        method: 'direct_transfer',
+                        paymentUrl: null,
+                        reference: `ORD-${order._id}-DT`,
+                        amount: order.totals.final,
+                        currency: 'NGN',
+                        bankDetails: {
+                            accountName: 'Sellio Enterprise',
+                            accountNumber: '816631442',
+                            bankName: 'MoniePoint MFB'
+                        },
+                        instructions: 'Please make a direct transfer to the account above and upload your payment proof in your order history.'
+                    },
+                    order: {
+                        id: order._id,
+                        status: order.status,
+                        items: items.map(item => ({
+                            product: item.productId,
+                            quantity: item.quantity,
+                            price: item.price
+                        })),
+                        totals: order.totals
+                    },
+                    customer: {
+                        email: customer.email,
+                        shipping: order.shipping.address
+                    }
+                };
+            }
+
+            // Initialize Paystack transaction for amounts <= 800,000
             const response = await axios.post(
                 'https://api.paystack.co/transaction/initialize',
                 {
@@ -941,6 +974,7 @@ class OrderService {
 
             return {
                 payment: {
+                    method: 'paystack',
                     paymentUrl: response.data.data.authorization_url,
                     reference: response.data.data.reference,
                     amount: order.totals.final,
@@ -967,6 +1001,145 @@ class OrderService {
                 status: 500,
                 message: 'Payment initialization failed',
                 details: error.message
+            };
+        }
+    }
+
+    async uploadPaymentProof(customerId, orderId, proofUrl) {
+        const order = await MarketOrder.findOne({
+            _id: orderId,
+            customerId
+        });
+
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        if (order.payment.status !== 'pending') {
+            throw { status: 400, message: 'Order payment is not pending' };
+        }
+
+        if (order.totals.final <= 800000) {
+            throw { status: 400, message: 'This order does not require direct transfer payment' };
+        }
+
+        // Get customer details
+        const customer = await MarketUser.findById(customerId);
+
+        order.payment.proofUrl = proofUrl;
+        order.payment.status = 'pending_verification';
+        order.payment.method = 'direct_transfer';
+        await order.save();
+
+        // Send email notification to customer
+        if (customer) {
+            try {
+                const emailService = require('./email.service');
+                const emailHtml = emailService.paymentProofSubmitted(
+                    customer.email,
+                    customer.fullName || 'Customer',
+                    order._id.toString(),
+                    order.totals.final
+                );
+                await emailService.sendEmail(customer.email, 'Payment Proof Submitted - Pending Verification', emailHtml);
+                console.log(chalk.blue(`✓ Payment proof submission email sent to ${customer.email}`));
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send payment proof email: ${emailError.message}`));
+            }
+        }
+
+        return {
+            success: true,
+            message: 'Payment proof uploaded successfully. Your payment is now pending verification.',
+            order: {
+                id: order._id,
+                status: order.status,
+                payment: {
+                    status: order.payment.status,
+                    method: order.payment.method,
+                    proofUrl: order.payment.proofUrl
+                }
+            }
+        };
+    }
+
+    async adminVerifyPayment(orderId, status, adminId) {
+        const order = await MarketOrder.findById(orderId);
+
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        if (order.payment.method !== 'direct_transfer') {
+            throw { status: 400, message: 'This order was not paid via direct transfer' };
+        }
+
+        if (order.payment.status !== 'pending_verification') {
+            throw { status: 400, message: 'This order is not pending verification' };
+        }
+
+        if (status === 'approved') {
+            order.payment.status = 'completed';
+            order.status = 'processing';
+            await order.save();
+
+            // Update order items status
+            const MarketOrderItem = require('../models/MarketOrderItem');
+            await MarketOrderItem.updateMany(
+                { orderId: order._id, status: 'pending' },
+                { status: 'processing' }
+            );
+
+            // Get customer details for email
+            const customer = await MarketUser.findById(order.customerId);
+
+            // Send email notification to customer
+            if (customer) {
+                try {
+                    const emailService = require('./email.service');
+                    const emailHtml = emailService.paymentVerified(
+                        customer.email,
+                        customer.fullName || 'Customer',
+                        order._id.toString(),
+                        order.totals.final
+                    );
+                    await emailService.sendEmail(customer.email, '✅ Payment Verified - Order Confirmed!', emailHtml);
+                    console.log(chalk.blue(`✓ Payment verification email sent to ${customer.email}`));
+                } catch (emailError) {
+                    console.log(chalk.yellow(`⚠ Failed to send payment verification email: ${emailError.message}`));
+                }
+            }
+
+            return {
+                success: true,
+                message: 'Payment verified successfully. Order is now being processed.',
+                order: {
+                    id: order._id,
+                    status: order.status,
+                    payment: {
+                        status: order.payment.status,
+                        method: order.payment.method,
+                        verifiedAt: new Date(),
+                        verifiedBy: adminId
+                    }
+                }
+            };
+        } else {
+            order.payment.status = 'failed';
+            order.payment.proofUrl = null;
+            await order.save();
+
+            return {
+                success: true,
+                message: 'Payment rejected. Customer needs to upload a new payment proof.',
+                order: {
+                    id: order._id,
+                    status: order.status,
+                    payment: {
+                        status: order.payment.status,
+                        method: order.payment.method
+                    }
+                }
             };
         }
     }

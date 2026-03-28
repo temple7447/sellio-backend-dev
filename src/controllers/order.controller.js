@@ -142,6 +142,37 @@ class OrderController {
         }
     }
 
+    async uploadPaymentProof(req, res) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Payment proof image is required'
+                });
+            }
+
+            console.log(chalk.blue('→ Uploading payment proof to Cloudinary...'));
+            const uploadResult = await uploadToCloudinary(req.file, 'payment_proofs');
+            const proofUrl = uploadResult.secure_url;
+
+            const result = await orderService.uploadPaymentProof(
+                req.user._id,
+                req.params.orderId,
+                proofUrl
+            );
+
+            console.log(chalk.green('✓ Payment proof uploaded successfully'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Payment proof upload failed:'), error);
+            res.status(error.status || 400).json({
+                success: false,
+                message: error.message || 'Payment proof upload failed',
+                details: error
+            });
+        }
+    }
+
     async initializeCustomerPayment(req, res) {
         try {
             const result = await orderService.initializeCustomerPayment(req.user._id, req.params.orderId);
@@ -199,13 +230,42 @@ class OrderController {
             console.log(chalk.green('✓ Admin dashboard statistics fetched successfully'));
             res.json(stats);
         } catch (error) {
-            console.error(chalk.red('✗ Dashboard statistics fetch failed:', error));
+            console.error(chalk.red('✗ Dashboard statistics fetch failed:'), error);
             res.status(error.status || 500).json({
                 message: error.message || 'Failed to fetch dashboard statistics',
                 error: error.details || undefined
             });
         }
     }
+
+    async adminVerifyPayment(req, res) {
+        try {
+            const { status } = req.body; // 'approved' or 'rejected'
+            
+            if (!status || !['approved', 'rejected'].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Status must be either "approved" or "rejected"'
+                });
+            }
+
+            const result = await orderService.adminVerifyPayment(
+                req.params.orderId,
+                status,
+                req.user._id
+            );
+
+            console.log(chalk.green(`✓ Payment ${status} for order: ${req.params.orderId}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin payment verification failed:'), error);
+            res.status(error.status || 400).json({
+                success: false,
+                message: error.message || 'Payment verification failed'
+            });
+        }
+    }
+
     async uploadFulfillmentProof(req, res) {
         try {
             const { orderItemId } = req.params;

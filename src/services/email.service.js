@@ -410,6 +410,58 @@ class EmailService {
 
         return html;
     }
+
+    /**
+     * Payment Proof Submitted Email (to customer)
+     */
+    paymentProofSubmitted(userEmail, userName, orderId, amount) {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #ff9800;">📋 Payment Proof Submitted</h1>
+                <p>Hi ${userName},</p>
+                <p>Thank you for submitting your payment proof. Your payment is now being verified.</p>
+                
+                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0;">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+                    <p><strong>Status:</strong> Pending Verification</p>
+                    <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <p>Our team will verify your payment within 24-48 hours. Once verified, you will receive a confirmation email and your order will be processed.</p>
+                
+                <p>If you have any questions, please contact our support team.</p>
+            </div>
+        `;
+
+        return html;
+    }
+
+    /**
+     * Payment Verified Email (to customer)
+     */
+    paymentVerified(userEmail, userName, orderId, amount) {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #28a745;">✅ Payment Verified!</h1>
+                <p>Hi ${userName},</p>
+                <p>Great news! Your payment has been verified and your order has been confirmed.</p>
+                
+                <div style="background: #e8f5e9; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0;">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Amount Paid:</strong> ₦${amount.toLocaleString()}</p>
+                    <p><strong>Status:</strong> Confirmed - Processing</p>
+                    <p><strong>Verified:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <p>Your order is now being processed and will be shipped soon. You will receive a shipping notification once your items are on their way.</p>
+                
+                <p>Thank you for shopping with Campus Trade!</p>
+            </div>
+        `;
+
+        return html;
+    }
 }
 
 module.exports = new EmailService();

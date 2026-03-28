@@ -41,6 +41,9 @@ router.get('/customer/:orderId/status', auth, orderController.getOrderStatus);
 router.post('/customer/:orderId/pay', auth, orderController.initializeCustomerPayment);
 router.post('/customer/:orderId/pay-wallet', auth, orderController.payWithWallet);
 
+// Customer uploads payment proof for direct transfer
+router.post('/customer/:orderId/upload-payment-proof', auth, upload.single('proof'), orderController.uploadPaymentProof);
+
 // Customer confirms they have received the order
 router.post('/customer/:orderId/confirm-receipt', auth, upload.single('proof'), orderController.confirmReceipt);
 
@@ -63,6 +66,9 @@ router.get('/admin/orders', auth, isAdmin, orderController.getAllOrders);
 
 
 router.get('/admin/dashboard', auth, isAdmin, orderController.getAdminDashboard);
+
+// Admin: Verify direct transfer payment
+router.post('/admin/:orderId/verify-payment', auth, isAdmin, orderController.adminVerifyPayment);
 
 // General order detail route for authenticated users (Buyer, Seller, Admin)
 router.get('/:orderId', auth, orderController.getOrderDetail);

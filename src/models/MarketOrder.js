@@ -28,10 +28,11 @@ const orderSchema = new mongoose.Schema({
         },
         status: {
             type: String,
-            enum: ['pending', 'completed', 'failed', 'refunded', 'processing'],
+            enum: ['pending', 'pending_verification', 'completed', 'failed', 'refunded', 'processing'],
             default: 'pending'
         },
         transactionId: String,
+        proofUrl: String,
         metadata: {}
     },
     shipping: {
