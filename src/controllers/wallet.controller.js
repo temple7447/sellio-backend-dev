@@ -190,11 +190,18 @@ class WalletController {
             const result = await walletService.requestWithdrawal(req.user._id, amount);
             console.log(chalk.green('✓ Withdrawal request processed successfully'));
 
+            const metadata = result.transaction.metadata || {};
             res.json({
                 message: result.message || 'Withdrawal request processed successfully',
                 transaction: result.transaction,
                 newBalance: result.balanceAfter,
-                requiresManualAction: result.requiresManualAction || false
+                requiresManualAction: result.requiresManualAction || false,
+                feeDetails: {
+                    originalAmount: metadata.originalAmount || amount,
+                    feePercentage: metadata.feePercentage || (req.user.role === 'seller' ? 3 : 1.5),
+                    feeAmount: metadata.feeAmount || 0,
+                    amountAfterFee: metadata.amountAfterFee || result.balanceAfter
+                }
             });
         } catch (error) {
             console.error(chalk.red('✗ Withdrawal failed:', error.message));
