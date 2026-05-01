@@ -455,15 +455,31 @@ class WalletService {
             };
         }
 
+        // 3. Calculate withdrawal fee based on user role
+        const feePercentage = user.role === 'seller' ? 0.03 : 0.015; // 3% for sellers, 1.5% for buyers
+        const feeAmount = Math.round(amount * feePercentage * 100) / 100;
+        const amountAfterFee = Math.round((amount - feeAmount) * 100) / 100;
+
+        if (amountAfterFee <= 0) {
+            throw {
+                status: 400,
+                message: 'Withdrawal amount too low after fee deduction'
+            };
+        }
+
         // 4. Record the debit first (set as pending)
-        const debitResult = await this.debit(userId, amount, 'Wallet withdrawal', {
+        const debitResult = await this.debit(userId, amountAfterFee, 'Wallet withdrawal', {
             type: 'withdrawal',
             status: 'pending',
             metadata: {
                 requestedAt: new Date(),
                 minWithdrawalLimit: settings.withdrawal.minAmount,
                 bankName: user.bankAccount.bankName,
-                accountNumber: user.bankAccount.accountNumber
+                accountNumber: user.bankAccount.accountNumber,
+                originalAmount: amount,
+                feePercentage: feePercentage * 100,
+                feeAmount: feeAmount,
+                amountAfterFee: amountAfterFee
             }
         });
 
@@ -497,7 +513,7 @@ class WalletService {
 
             // SIMULATION: If it's a test recipient, simulate a success
             if (recipientCode.startsWith('RCP_TEST_')) {
-                console.log(chalk.yellow(`ℹ Sandbox: Simulating Paystack transfer of ₦${amount}`));
+                console.log(chalk.yellow(`ℹ Sandbox: Simulating Paystack transfer of ₦${amountAfterFee}`));
                 transferData = {
                     data: {
                         transfer_code: `TRF_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`,
@@ -506,9 +522,9 @@ class WalletService {
                     }
                 };
             } else {
-                console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amount}...`));
+                console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amountAfterFee}...`));
                 transferData = await paystack.initiateTransfer(
-                    amount,
+                    amountAfterFee,
                     recipientCode,
                     `Withdrawal for ${user.fullName} (${transaction._id})`
                 );
