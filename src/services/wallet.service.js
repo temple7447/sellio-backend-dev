@@ -441,10 +441,10 @@ class WalletService {
         const user = await MarketUser.findById(userId);
         if (!user) throw { status: 404, message: 'User not found' };
 
-        if (user.role === 'seller' && (!user.isVerified || !user.adminVerified)) {
+        if (!user.isVerified || !user.adminVerified) {
             throw {
                 status: 403,
-                message: 'Only verified sellers can withdraw funds'
+                message: 'Only verified users can withdraw funds'
             };
         }
 
