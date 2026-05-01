@@ -348,7 +348,7 @@ class NotificationService {
     /**
      * Send withdrawal status notification
      */
-    async notifyWithdrawalStatus(user, amount, status, reason = '') {
+    async notifyWithdrawalStatus(user, amount, status, reason = '', feeDetails = null) {
         try {
             const statusTitle = {
                 approved: 'Withdrawal Approved',
@@ -364,7 +364,7 @@ class NotificationService {
                 `withdrawal_${status}`,
                 title,
                 message,
-                { amount, status, reason }
+                { amount, status, reason, feeDetails }
             );
 
             if (user.email) {
@@ -373,7 +373,8 @@ class NotificationService {
                     user.fullName,
                     amount,
                     status,
-                    reason
+                    reason,
+                    feeDetails
                 );
                 await emailService.sendEmail(user.email, title, emailHtml);
             }

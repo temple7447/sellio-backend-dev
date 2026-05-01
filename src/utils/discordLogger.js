@@ -306,10 +306,16 @@ class DiscordLogger {
 
     async withdrawalLog(action, userId, amount, status, details = null) {
         const color = status === 'approved' ? colors.SUCCESS : (status === 'rejected' ? colors.ERROR : colors.WARNING);
-        
+
+        let description = `**User:** \`${userId || 'Unknown'}\`\n**Amount:** ₦${amount || 0}\n**Status:** ${status}`;
+        if (details?.feeAmount) {
+            description += `\n**Fee:** ₦${details.feeAmount} (${details.feePercentage}%)`;
+            description += `\n**After Fee:** ₦${details.amountAfterFee}`;
+        }
+
         const embed = {
             title: `🏧 Withdrawal: ${action}`,
-            description: `**User:** \`${userId || 'Unknown'}\`\n**Amount:** ₦${amount || 0}\n**Status:** ${status}`,
+            description: description,
             color: color,
             timestamp: this.formatTimestamp(),
             footer: { text: 'Sellio Marketplace API' }

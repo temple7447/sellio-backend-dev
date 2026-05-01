@@ -616,6 +616,8 @@ class WalletService {
      * Process a manual withdrawal request (Admin Only)
      */
     async processManualWithdrawal(transactionId, status, adminData = {}) {
+        const MarketUser = require('../models/MarketUser');
+        const notificationService = require('./notification.service');
         const transaction = await WalletTransaction.findById(transactionId);
         if (!transaction) throw { status: 404, message: 'Transaction not found' };
 
@@ -628,6 +630,13 @@ class WalletService {
         }
 
         const { reason, adminId } = adminData;
+        const metadata = transaction.metadata || {};
+        const feeDetails = {
+            originalAmount: metadata.originalAmount || transaction.amount,
+            feePercentage: metadata.feePercentage || 0,
+            feeAmount: metadata.feeAmount || 0,
+            amountAfterFee: metadata.amountAfterFee || transaction.amount
+        };
 
         if (status === 'completed') {
             transaction.status = 'completed';
@@ -636,7 +645,13 @@ class WalletService {
             transaction.metadata.processedBy = adminId;
             await transaction.save();
 
-            return { success: true, transaction };
+            // Notify user
+            const user = await MarketUser.findById(transaction.userId);
+            if (user) {
+                await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
+            }
+
+            return { success: true, transaction, feeDetails };
         }
 
         if (status === 'failed') {
@@ -645,6 +660,12 @@ class WalletService {
             transaction.metadata.processedAt = new Date();
             transaction.metadata.processedBy = adminId;
             await transaction.save();
+
+            // Notify user
+            const user = await MarketUser.findById(transaction.userId);
+            if (user) {
+                await notificationService.notifyWithdrawalStatus(user, feeDetails.originalAmount, 'declined', reason, feeDetails);
+            }
 
             // Perform the refund
             console.log(chalk.red(`→ Refunding ₦${transaction.amount} to user ${transaction.userId} due to manual decline`));
@@ -663,10 +684,7 @@ class WalletService {
                 userId: transaction.userId,
                 type: 'deposit',
                 amount: transaction.amount,
-                balanceBefore: 0, // We'll need to fetch current balance to be precise, or just use 0 if we don't track it here
-                // Note: balanceBefore/After in WalletTransaction usually reflects the balance AFTER the specific operation it describes.
-                // In our 'debit' method, balanceAfter is balance before - amount.
-                // For reversal, we'll just omit or set logically if we have the wallet.
+                balanceBefore: 0,
                 balanceAfter: 0,
                 reference: `REV-${transaction.reference}`,
                 description: `Reversal: ${transaction.description}`,
@@ -684,7 +702,7 @@ class WalletService {
             reversal.balanceBefore = wallet.balance - transaction.amount;
             await reversal.save();
 
-            return { success: true, transaction, reversal };
+            return { success: true, transaction, reversal, feeDetails };
         }
 
         throw { status: 400, message: 'Invalid status for manual processing. Use "completed" or "failed".' };

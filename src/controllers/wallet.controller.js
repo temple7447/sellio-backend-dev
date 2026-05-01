@@ -267,7 +267,11 @@ class WalletController {
             });
 
             console.log(chalk.green('✓ Withdrawal approved manually'));
-            res.json(result);
+            res.json({
+                success: result.success,
+                transaction: result.transaction,
+                feeDetails: result.feeDetails
+            });
         } catch (error) {
             console.error(chalk.red('✗ Manual approval failed:', error.message));
             res.status(error.status || 500).json({ message: error.message });
@@ -293,7 +297,12 @@ class WalletController {
             });
 
             console.log(chalk.green('✓ Withdrawal declined manually'));
-            res.json(result);
+            res.json({
+                success: result.success,
+                transaction: result.transaction,
+                reversal: result.reversal,
+                feeDetails: result.feeDetails
+            });
         } catch (error) {
             console.error(chalk.red('✗ Manual decline failed:'), error.message);
             res.status(error.status || 500).json({ message: error.message });

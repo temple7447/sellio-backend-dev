@@ -235,7 +235,7 @@ class EmailService {
     /**
      * Withdrawal Request Status Email
      */
-    withdrawalStatus(userEmail, userName, amount, status, reason = '') {
+    withdrawalStatus(userEmail, userName, amount, status, reason = '', feeDetails = null) {
         const statusMap = {
             approved: { color: '#4caf50', icon: '✓', title: 'Withdrawal Approved' },
             rejected: { color: '#f44336', icon: '✗', title: 'Withdrawal Rejected' },
@@ -245,12 +245,16 @@ class EmailService {
         const statusInfo = statusMap[status] || statusMap.approved;
 
         const html = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin:0 auto;">
                 <h1 style="color: ${statusInfo.color};">${statusInfo.icon} ${statusInfo.title}</h1>
                 <p>Hi ${userName},</p>
-                
+
                 <div style="background: #f5f5f5; border-left: 4px solid ${statusInfo.color}; padding: 15px; margin: 15px 0;">
-                    <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+                    ${feeDetails ? `
+                    <p><strong>Original Amount:</strong> ₦${feeDetails.originalAmount?.toLocaleString()}</p>
+                    <p><strong>Fee (${feeDetails.feePercentage}%):</strong> ₦${feeDetails.feeAmount?.toLocaleString()}</p>
+                    <p><strong>Amount Transferred:</strong> ₦${feeDetails.amountAfterFee?.toLocaleString()}</p>
+                    ` : `<p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>`}
                     <p><strong>Status:</strong> ${status.toUpperCase()}</p>
                     <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
                     ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
