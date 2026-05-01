@@ -60,15 +60,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Temporary: 15s request delay + 15s response delay (30s total)
+// Temporary: 2.5s request delay + 2.5s response delay (5s total)
 app.use((req, res, next) => {
   setTimeout(() => {
     ['send', 'json'].forEach(m => {
       const orig = res[m].bind(res);
-      res[m] = (b) => setTimeout(() => orig(b), 15000);
+      res[m] = (b) => setTimeout(() => orig(b), 2500);
     });
     next();
-  }, 15000);
+  }, 2500);
 });
 
 app.get("/", (req, res) => {
