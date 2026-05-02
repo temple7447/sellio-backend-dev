@@ -190,17 +190,18 @@ class WalletController {
             const result = await walletService.requestWithdrawal(req.user._id, amount);
             console.log(chalk.green('✓ Withdrawal request processed successfully'));
 
-            const metadata = result.transaction.metadata || {};
+            const m = result.transaction.metadata || {};
+            const oldM = m.metadata || {};
             res.json({
                 message: result.message || 'Withdrawal request processed successfully',
                 transaction: result.transaction,
                 newBalance: result.balanceAfter,
                 requiresManualAction: result.requiresManualAction || false,
                 feeDetails: {
-                    originalAmount: metadata.originalAmount || amount,
-                    feePercentage: metadata.feePercentage || (req.user.role === 'seller' ? 3 : 1.5),
-                    feeAmount: metadata.feeAmount || 0,
-                    amountAfterFee: metadata.amountAfterFee || result.balanceAfter
+                    originalAmount: m.originalAmount || oldM.originalAmount || amount,
+                    feePercentage: m.feePercentage || oldM.feePercentage || (req.user.role === 'seller' ? 3 : 1.5),
+                    feeAmount: m.feeAmount || oldM.feeAmount || 0,
+                    amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || result.balanceAfter
                 }
             });
         } catch (error) {
@@ -292,11 +293,13 @@ class WalletController {
                         const notificationService = require('../services/notification.service');
                         const user = await MarketUser.findById(transaction.userId);
                         if (user) {
+                            const m = transaction.metadata || {};
+                            const oldM = m.metadata || {};
                             const feeDetails = {
-                                originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
-                                feePercentage: transaction.metadata.feePercentage || 0,
-                                feeAmount: transaction.metadata.feeAmount || 0,
-                                amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                                originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
+                                feePercentage: m.feePercentage || oldM.feePercentage || 0,
+                                feeAmount: m.feeAmount || oldM.feeAmount || 0,
+                                amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
                             };
                             await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
                         }

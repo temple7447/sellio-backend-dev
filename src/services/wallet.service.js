@@ -478,16 +478,14 @@ class WalletService {
         const debitResult = await this.debit(userId, amount, 'Wallet withdrawal', {
             type: 'withdrawal',
             status: 'pending',
-            metadata: {
-                requestedAt: new Date(),
-                minWithdrawalLimit: settings.withdrawal.minAmount,
-                bankName: user.bankAccount.bankName,
-                accountNumber: user.bankAccount.accountNumber,
-                originalAmount: amount,
-                feePercentage: feePercentage * 100,
-                feeAmount: feeAmount,
-                amountAfterFee: amountAfterFee
-            }
+            requestedAt: new Date(),
+            minWithdrawalLimit: settings.withdrawal.minAmount,
+            bankName: user.bankAccount.bankName,
+            accountNumber: user.bankAccount.accountNumber,
+            originalAmount: amount,
+            feePercentage: feePercentage * 100,
+            feeAmount: feeAmount,
+            amountAfterFee: amountAfterFee
         });
 
         const transaction = debitResult.transaction;
@@ -644,12 +642,13 @@ class WalletService {
         }
 
         const { reason, adminId } = adminData;
-        const metadata = transaction.metadata || {};
+        const m = transaction.metadata || {};
+        const oldM = m.metadata || {};
         const feeDetails = {
-            originalAmount: metadata.originalAmount || metadata.walletDebitAmount || transaction.amount,
-            feePercentage: metadata.feePercentage || 0,
-            feeAmount: metadata.feeAmount || 0,
-            amountAfterFee: metadata.amountAfterFee || transaction.amount
+            originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
+            feePercentage: m.feePercentage || oldM.feePercentage || 0,
+            feeAmount: m.feeAmount || oldM.feeAmount || 0,
+            amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
         };
 
         if (status === 'completed') {
@@ -684,7 +683,9 @@ class WalletService {
             }
 
             // Perform the refund - refund the FULL amount that was debited from the wallet
-            const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
+            const m = transaction.metadata || {};
+            const oldM = m.metadata || {};
+            const refundAmount = m.walletDebitAmount || oldM.originalAmount || transaction.amount;
             console.log(chalk.red(`→ Refunding ₦${refundAmount} to user ${transaction.userId} due to manual decline`));
 
             const MarketWallet = require('../models/MarketWallet');
@@ -777,11 +778,13 @@ class WalletService {
                     // Notify user
                     const user = await MarketUser.findById(transaction.userId);
                     if (user) {
+                        const m = transaction.metadata || {};
+                        const oldM = m.metadata || {};
                         const feeDetails = {
-                            originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
-                            feePercentage: transaction.metadata.feePercentage || 0,
-                            feeAmount: transaction.metadata.feeAmount || 0,
-                            amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                            originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
+                            feePercentage: m.feePercentage || oldM.feePercentage || 0,
+                            feeAmount: m.feeAmount || oldM.feeAmount || 0,
+                            amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
                         };
                         await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
                     }
@@ -798,7 +801,9 @@ class WalletService {
                     await transaction.save();
 
                     // Refund the FULL amount that was debited from the wallet
-                    const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
+                    const m = transaction.metadata || {};
+                    const oldM = m.metadata || {};
+                    const refundAmount = m.walletDebitAmount || oldM.originalAmount || transaction.amount;
                     const MarketWallet = require('../models/MarketWallet');
                     await MarketWallet.findOneAndUpdate(
                         { userId: transaction.userId },
@@ -830,11 +835,13 @@ class WalletService {
                     // Notify user
                     const user = await MarketUser.findById(transaction.userId);
                     if (user) {
+                        const m = transaction.metadata || {};
+                        const oldM = m.metadata || {};
                         const feeDetails = {
-                            originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
-                            feePercentage: transaction.metadata.feePercentage || 0,
-                            feeAmount: transaction.metadata.feeAmount || 0,
-                            amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                            originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
+                            feePercentage: m.feePercentage || oldM.feePercentage || 0,
+                            feeAmount: m.feeAmount || oldM.feeAmount || 0,
+                            amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
                         };
                         await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'rejected', 'Transfer failed - funds refunded', feeDetails);
                     }
