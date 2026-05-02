@@ -89,6 +89,30 @@ const verifyTransaction = async (reference) => {
 };
 
 /**
+ * Verify a Paystack transfer by ID
+ */
+const verifyTransfer = async (transferId) => {
+    try {
+        const response = await paystack.get(`/transfer/${transferId}`);
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
+
+/**
+ * List transfers with optional filters
+ */
+const listTransfers = async (params = {}) => {
+    try {
+        const response = await paystack.get('/transfer', { params });
+        return response.data;
+    } catch (error) {
+        throw error.response?.data || error;
+    }
+};
+
+/**
  * Map Paystack status to system status
  */
 const getTransactionStatus = (paystackStatus) => {
@@ -111,5 +135,7 @@ module.exports = {
     initiateTransfer,
     initializeTransaction,
     verifyTransaction,
+    verifyTransfer,
+    listTransfers,
     getTransactionStatus
 };

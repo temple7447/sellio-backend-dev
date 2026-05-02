@@ -441,10 +441,17 @@ class WalletService {
         const user = await MarketUser.findById(userId);
         if (!user) throw { status: 404, message: 'User not found' };
 
-        if (!user.isVerified || !user.adminVerified) {
+        if (!user.isVerified) {
             throw {
                 status: 403,
                 message: 'Only verified users can withdraw funds'
+            };
+        }
+
+        if (user.role === 'seller' && !user.adminVerified) {
+            throw {
+                status: 403,
+                message: 'Your seller account is pending admin verification. Please wait for approval.'
             };
         }
 
@@ -467,8 +474,8 @@ class WalletService {
             };
         }
 
-        // 4. Record the debit first (set as pending)
-        const debitResult = await this.debit(userId, amountAfterFee, 'Wallet withdrawal', {
+        // 4. Record the debit first (set as pending) - debit the FULL original amount
+        const debitResult = await this.debit(userId, amount, 'Wallet withdrawal', {
             type: 'withdrawal',
             status: 'pending',
             metadata: {
@@ -484,6 +491,13 @@ class WalletService {
         });
 
         const transaction = debitResult.transaction;
+
+        // Update transaction to show the amount user receives (after fee), not the debit amount
+        // This is for display purposes in withdrawal history
+        transaction.amount = amountAfterFee;
+        transaction.metadata.walletDebitAmount = amount;
+        transaction.markModified('metadata');
+        await transaction.save();
 
         // 5. Create recipient and initiate Paystack transfer
         try {
@@ -552,11 +566,12 @@ class WalletService {
             // If it failed immediately, we should refund the user
             if (transaction.status === 'failed') {
                 console.log(chalk.red(`→ Automatic refund: Paystack initiation failed for ${transaction.reference}`));
+                const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
                 const MarketWallet = require('../models/MarketWallet');
                 await MarketWallet.findOneAndUpdate(
                     { userId: transaction.userId },
                     {
-                        $inc: { balance: transaction.amount },
+                        $inc: { balance: refundAmount },
                         $set: { lastTransactionAt: new Date() }
                     }
                 );
@@ -566,8 +581,8 @@ class WalletService {
                 await WalletTransaction.create({
                     userId: transaction.userId,
                     type: 'deposit',
-                    amount: transaction.amount,
-                    balanceBefore: wallet.balance - transaction.amount,
+                    amount: refundAmount,
+                    balanceBefore: wallet.balance - refundAmount,
                     balanceAfter: wallet.balance,
                     reference: `REV-${transaction.reference}`,
                     description: `Reversal (Initiation Failed): ${transaction.description}`,
@@ -616,7 +631,6 @@ class WalletService {
      * Process a manual withdrawal request (Admin Only)
      */
     async processManualWithdrawal(transactionId, status, adminData = {}) {
-        const MarketUser = require('../models/MarketUser');
         const notificationService = require('./notification.service');
         const transaction = await WalletTransaction.findById(transactionId);
         if (!transaction) throw { status: 404, message: 'Transaction not found' };
@@ -632,7 +646,7 @@ class WalletService {
         const { reason, adminId } = adminData;
         const metadata = transaction.metadata || {};
         const feeDetails = {
-            originalAmount: metadata.originalAmount || transaction.amount,
+            originalAmount: metadata.originalAmount || metadata.walletDebitAmount || transaction.amount,
             feePercentage: metadata.feePercentage || 0,
             feeAmount: metadata.feeAmount || 0,
             amountAfterFee: metadata.amountAfterFee || transaction.amount
@@ -643,6 +657,7 @@ class WalletService {
             transaction.metadata.manuallyProcessed = true;
             transaction.metadata.processedAt = new Date();
             transaction.metadata.processedBy = adminId;
+            transaction.markModified('metadata');
             await transaction.save();
 
             // Notify user
@@ -659,22 +674,24 @@ class WalletService {
             transaction.metadata.declineReason = reason || 'Declined by admin';
             transaction.metadata.processedAt = new Date();
             transaction.metadata.processedBy = adminId;
+            transaction.markModified('metadata');
             await transaction.save();
 
             // Notify user
             const user = await MarketUser.findById(transaction.userId);
             if (user) {
-                await notificationService.notifyWithdrawalStatus(user, feeDetails.originalAmount, 'declined', reason, feeDetails);
+                await notificationService.notifyWithdrawalStatus(user, feeDetails.originalAmount, 'rejected', reason, feeDetails);
             }
 
-            // Perform the refund
-            console.log(chalk.red(`→ Refunding ₦${transaction.amount} to user ${transaction.userId} due to manual decline`));
+            // Perform the refund - refund the FULL amount that was debited from the wallet
+            const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
+            console.log(chalk.red(`→ Refunding ₦${refundAmount} to user ${transaction.userId} due to manual decline`));
 
             const MarketWallet = require('../models/MarketWallet');
             await MarketWallet.findOneAndUpdate(
                 { userId: transaction.userId },
                 {
-                    $inc: { balance: transaction.amount },
+                    $inc: { balance: refundAmount },
                     $set: { lastTransactionAt: new Date() }
                 }
             );
@@ -683,7 +700,7 @@ class WalletService {
             const reversal = await WalletTransaction.create({
                 userId: transaction.userId,
                 type: 'deposit',
-                amount: transaction.amount,
+                amount: refundAmount,
                 balanceBefore: 0,
                 balanceAfter: 0,
                 reference: `REV-${transaction.reference}`,
@@ -699,13 +716,146 @@ class WalletService {
             // Refresh balance after in reversal
             const wallet = await MarketWallet.findOne({ userId: transaction.userId });
             reversal.balanceAfter = wallet.balance;
-            reversal.balanceBefore = wallet.balance - transaction.amount;
+            reversal.balanceBefore = wallet.balance - refundAmount;
             await reversal.save();
 
-            return { success: true, transaction, reversal, feeDetails };
+            return { success: true, transaction, reversal, feeDetails, refundAmount };
         }
 
         throw { status: 400, message: 'Invalid status for manual processing. Use "completed" or "failed".' };
+    }
+
+    /**
+     * Reconcile pending withdrawals with Paystack
+     * Checks all pending withdrawals and updates status based on Paystack response
+     */
+    async reconcilePendingWithdrawals() {
+        const paystack = require('../utils/paystack');
+        const notificationService = require('./notification.service');
+
+        // Find all pending withdrawal transactions that have a Paystack transfer code
+        const pendingWithdrawals = await WalletTransaction.find({
+            type: 'withdrawal',
+            status: 'pending',
+            'metadata.paystackTransferCode': { $exists: true, $ne: null }
+        });
+
+        console.log(chalk.blue(`Found ${pendingWithdrawals.length} pending withdrawals to reconcile...`));
+
+        const results = {
+            total: pendingWithdrawals.length,
+            completed: 0,
+            failed: 0,
+            stillPending: 0,
+            errors: 0
+        };
+
+        for (const transaction of pendingWithdrawals) {
+            try {
+                const transferCode = transaction.metadata.paystackTransferCode;
+                
+                // Skip test transfers (they're already handled)
+                if (transferCode.startsWith('TRF_TEST_')) {
+                    continue;
+                }
+
+                console.log(chalk.blue(`→ Checking transfer ${transferCode} for transaction ${transaction.reference}...`));
+
+                // Verify transfer status with Paystack
+                const paystackResponse = await paystack.verifyTransfer(transferCode);
+                const paystackStatus = paystackResponse.data.status;
+
+                console.log(chalk.yellow(`  Paystack status for ${transferCode}: ${paystackStatus}`));
+
+                if (paystackStatus === 'success') {
+                    // Transfer completed on Paystack - mark as completed
+                    transaction.status = 'completed';
+                    transaction.metadata.paystackStatus = paystackStatus;
+                    transaction.metadata.reconciledAt = new Date();
+                    await transaction.save();
+
+                    // Notify user
+                    const user = await MarketUser.findById(transaction.userId);
+                    if (user) {
+                        const feeDetails = {
+                            originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
+                            feePercentage: transaction.metadata.feePercentage || 0,
+                            feeAmount: transaction.metadata.feeAmount || 0,
+                            amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                        };
+                        await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
+                    }
+
+                    results.completed++;
+                    console.log(chalk.green(`  ✓ Transaction ${transaction.reference} marked as completed`));
+
+                } else if (paystackStatus === 'failed') {
+                    // Transfer failed - mark as failed and refund
+                    transaction.status = 'failed';
+                    transaction.metadata.paystackStatus = paystackStatus;
+                    transaction.metadata.paystackError = paystackResponse.message || 'Transfer failed';
+                    transaction.metadata.reconciledAt = new Date();
+                    await transaction.save();
+
+                    // Refund the FULL amount that was debited from the wallet
+                    const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
+                    const MarketWallet = require('../models/MarketWallet');
+                    await MarketWallet.findOneAndUpdate(
+                        { userId: transaction.userId },
+                        {
+                            $inc: { balance: refundAmount },
+                            $set: { lastTransactionAt: new Date() }
+                        }
+                    );
+
+                    // Record reversal transaction
+                    const wallet = await MarketWallet.findOne({ userId: transaction.userId });
+                    await WalletTransaction.create({
+                        userId: transaction.userId,
+                        type: 'deposit',
+                        amount: refundAmount,
+                        balanceBefore: wallet.balance - refundAmount,
+                        balanceAfter: wallet.balance,
+                        reference: `REV-${transaction.reference}`,
+                        description: `Reversal (Transfer Failed): ${transaction.description}`,
+                        status: 'completed',
+                        paymentGateway: 'system',
+                        metadata: {
+                            originalTransactionId: transaction._id,
+                            reason: 'Paystack transfer failed',
+                            paystackTransferCode: transferCode
+                        }
+                    });
+
+                    // Notify user
+                    const user = await MarketUser.findById(transaction.userId);
+                    if (user) {
+                        const feeDetails = {
+                            originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
+                            feePercentage: transaction.metadata.feePercentage || 0,
+                            feeAmount: transaction.metadata.feeAmount || 0,
+                            amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                        };
+                        await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'rejected', 'Transfer failed - funds refunded', feeDetails);
+                    }
+
+                    results.failed++;
+                    console.log(chalk.red(`  ✗ Transaction ${transaction.reference} marked as failed and refunded`));
+
+                } else {
+                    // Still pending/processing/queued
+                    results.stillPending++;
+                    console.log(chalk.yellow(`  ⏳ Transaction ${transaction.reference} still ${paystackStatus}`));
+                }
+
+            } catch (error) {
+                results.errors++;
+                console.error(chalk.red(`  ✗ Error reconciling ${transaction.reference}: ${error.message}`));
+            }
+        }
+
+        console.log(chalk.green(`\nReconciliation complete: ${results.completed} completed, ${results.failed} failed, ${results.stillPending} still pending, ${results.errors} errors`));
+        return results;
     }
 
     /**

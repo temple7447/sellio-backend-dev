@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const chalk = require('chalk');
+const morgan = require('morgan');
 const config = require('./config/config');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -60,15 +61,48 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Request logging middleware
+app.use(morgan((tokens, req, res) => {
+    const method = tokens.method(req, res);
+    const url = tokens.url(req, res);
+    const status = tokens.status(req, res);
+    const responseTime = tokens['response-time'](req, res);
+    const timestamp = new Date().toLocaleTimeString();
+
+    const methodColor = method === 'GET' ? chalk.green(method) :
+        method === 'POST' ? chalk.blue(method) :
+            method === 'PUT' ? chalk.yellow(method) :
+                method === 'DELETE' ? chalk.red(method) :
+                    chalk.white(method);
+
+    const statusColor = parseInt(status) >= 500 ? chalk.red(status) :
+        parseInt(status) >= 400 ? chalk.yellow(status) :
+            parseInt(status) >= 300 ? chalk.cyan(status) :
+                chalk.green(status);
+
+    return chalk.dim(`[${timestamp}]`) +
+        ` ${methodColor} ${chalk.white(url)} ${statusColor} ${chalk.dim(`${responseTime}ms`)}`;
+}));
+
+// Log request bodies for POST/PUT in development
+if (process.env.NODE_ENV !== 'production') {
+    app.use((req, res, next) => {
+        if ((req.method === 'POST' || req.method === 'PUT') && req.body && Object.keys(req.body).length > 0) {
+            console.log(chalk.dim('  Request Body:'), JSON.stringify(req.body, null, 2));
+        }
+        next();
+    });
+}
+
 // Temporary: 3.5s request delay + 3.5s response delay (7s total)
 app.use((req, res, next) => {
   setTimeout(() => {
     ['send', 'json'].forEach(m => {
       const orig = res[m].bind(res);
-      res[m] = (b) => setTimeout(() => orig(b), 3500);
+      res[m] = (b) => setTimeout(() => orig(b), 300);
     });
     next();
-  }, 3500);
+  }, 300);
 });
 
 app.get("/", (req, res) => {

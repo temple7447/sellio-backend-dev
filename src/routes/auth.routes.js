@@ -109,6 +109,7 @@ router.post('/reset-password', authController.resetPassword);
 router.delete('/admin/users/:userId', auth, isAdmin, adminController.deleteUser);
 router.put('/admin/users/:userId', auth, isAdmin, adminController.adminUpdateUser);
 router.get('/admin/sellers/:sellerId/bank-info', auth, isAdmin, adminController.getSellerBankInfo);
+router.get('/admin/users/:userId/bank-info', auth, isAdmin, adminController.getUserBankInfo);
 
 // Universal bank information routes (available for all user roles)
 router.post('/user/bank-info', auth, authController.addBankInfo);

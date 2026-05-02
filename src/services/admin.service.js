@@ -552,6 +552,31 @@ class AdminService {
         };
     }
 
+    async getUserBankInfo(userId) {
+        const user = await MarketUser.findById(userId);
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+        const bank = user.bankAccount || null;
+        return {
+            success: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                fullName: user.fullName,
+                role: user.role
+            },
+            hasBankInfo: !!bank,
+            bankAccount: bank ? {
+                bankName: bank.bankName || null,
+                bankCode: bank.bankCode || null,
+                accountNumber: bank.accountNumber || null,
+                accountName: bank.accountName || null,
+                recipientCode: bank.recipientCode || null
+            } : null
+        };
+    }
+
     // Reward Settings Management
     async getRewardSettings() {
         const RewardSettings = require('../models/RewardSettings');

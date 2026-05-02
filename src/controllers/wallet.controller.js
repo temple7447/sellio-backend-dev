@@ -262,6 +262,59 @@ class WalletController {
     async approveWithdrawal(req, res) {
         try {
             const { transactionId } = req.params;
+            
+            // First, check if Paystack has already completed this transfer
+            const WalletTransaction = require('../models/WalletTransaction');
+            const paystack = require('../utils/paystack');
+            const transaction = await WalletTransaction.findById(transactionId);
+            
+            if (!transaction) {
+                return res.status(404).json({ message: 'Transaction not found' });
+            }
+
+            if (transaction.metadata.paystackTransferCode && !transaction.metadata.paystackTransferCode.startsWith('TRF_TEST_')) {
+                // Check Paystack status first
+                try {
+                    const paystackResponse = await paystack.verifyTransfer(transaction.metadata.paystackTransferCode);
+                    const paystackStatus = paystackResponse.data.status;
+                    
+                    if (paystackStatus === 'success') {
+                        // Paystack already completed this transfer - auto-complete it
+                        console.log(chalk.yellow(`⚠ Transfer ${transaction.metadata.paystackTransferCode} already completed by Paystack. Auto-completing...`));
+                        
+                        transaction.status = 'completed';
+                        transaction.metadata.paystackStatus = paystackStatus;
+                        transaction.metadata.autoCompletedAt = new Date();
+                        await transaction.save();
+
+                        // Notify user
+                        const MarketUser = require('../models/MarketUser');
+                        const notificationService = require('../services/notification.service');
+                        const user = await MarketUser.findById(transaction.userId);
+                        if (user) {
+                            const feeDetails = {
+                                originalAmount: transaction.metadata.originalAmount || transaction.metadata.walletDebitAmount || transaction.amount,
+                                feePercentage: transaction.metadata.feePercentage || 0,
+                                feeAmount: transaction.metadata.feeAmount || 0,
+                                amountAfterFee: transaction.metadata.amountAfterFee || transaction.amount
+                            };
+                            await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
+                        }
+
+                        return res.json({
+                            success: true,
+                            message: 'Transfer was already completed by Paystack. Status auto-updated to completed. No manual action needed.',
+                            transaction,
+                            alreadyCompletedByPaystack: true
+                        });
+                    }
+                } catch (error) {
+                    console.error(chalk.red('⚠ Could not verify Paystack status, proceeding with manual approval:'), error.message);
+                    // Continue with manual approval if Paystack check fails
+                }
+            }
+
+            // Proceed with manual approval
             const result = await walletService.processManualWithdrawal(transactionId, 'completed', {
                 adminId: req.user._id
             });
@@ -324,6 +377,25 @@ class WalletController {
                 message: error.message,
                 expiresAt: error.expiresAt 
             });
+        }
+    }
+
+    /**
+     * Reconcile pending withdrawals with Paystack (Admin Only)
+     * POST /api/wallet/admin/withdrawals/reconcile
+     */
+    async reconcileWithdrawals(req, res) {
+        try {
+            const result = await walletService.reconcilePendingWithdrawals();
+            console.log(chalk.green('✓ Withdrawal reconciliation completed'));
+            res.json({
+                success: true,
+                message: `Reconciliation complete: ${result.completed} marked as completed, ${result.failed} failed and refunded`,
+                results: result
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ Withdrawal reconciliation failed:'), error.message);
+            res.status(error.status || 500).json({ message: error.message });
         }
     }
 }

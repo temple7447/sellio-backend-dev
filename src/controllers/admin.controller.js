@@ -94,6 +94,17 @@ class AdminController {
         }
     }
 
+    async getUserBankInfo(req, res) {
+        try {
+            const result = await adminService.getUserBankInfo(req.params.userId);
+            console.log(chalk.green('✓ User bank info fetched'));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Fetching user bank info failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async getRewardSettings(req, res) {
         try {
             const settings = await adminService.getRewardSettings();

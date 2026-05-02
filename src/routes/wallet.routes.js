@@ -102,6 +102,13 @@ router.post('/admin/withdrawals/:transactionId/approve', auth, isAdmin, walletCo
 router.post('/admin/withdrawals/:transactionId/decline', auth, isAdmin, walletController.declineWithdrawal);
 
 /**
+ * @route   POST /api/wallet/admin/withdrawals/reconcile
+ * @desc    Reconcile pending withdrawals with Paystack to auto-complete successful transfers (Admin only)
+ * @access  Private (Admin)
+ */
+router.post('/admin/withdrawals/reconcile', auth, isAdmin, walletController.reconcileWithdrawals);
+
+/**
  * @route   POST /api/wallet/trusted-badge/purchase
  * @desc    Purchase trusted badge for seller (3500 Naira)
  * @access  Private (Sellers only)
