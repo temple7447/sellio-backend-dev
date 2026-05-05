@@ -857,12 +857,10 @@ class OrderService {
         // Release funds to each seller in the order
         for (const item of orderItems) {
             if (item.status !== 'delivered' && item.status !== 'cancelled' && item.status !== 'disputed') {
-                // IMPORTANT: Only release funds if BOTH seller and buyer have provided proof
-                if (!item.fulfillmentProof || !item.buyerProof) {
-                    const missing = [];
-                    if (!item.fulfillmentProof) missing.push('seller proof');
-                    if (!item.buyerProof) missing.push('buyer proof');
-                    console.log(chalk.yellow(`→ Skipping fund release for item ${item._id}: Missing ${missing.join(' and ')}.`));
+                // Release funds when buyer confirms receipt (buyerProof is required)
+                // Seller proof is optional - if buyer confirms receipt, transaction is complete
+                if (!item.buyerProof) {
+                    console.log(chalk.yellow(`→ Skipping fund release for item ${item._id}: Buyer proof not yet uploaded.`));
                     continue;
                 }
 
@@ -876,7 +874,8 @@ class OrderService {
                         metadata: {
                             orderItemId: item._id,
                             productId: item.productId,
-                            quantity: item.quantity
+                            quantity: item.quantity,
+                            buyerConfirmed: true
                         }
                     }
                 );
@@ -2173,20 +2172,15 @@ class OrderService {
                 await order.save();
             }
         } else if (decision === 'dismiss') {
-            // Simply mark as resolved, return item to shipped/processing or delivered
-            if (item) {
-                item.status = 'delivered'; // Return to delivered so funds can be processed normally or kept
-                await item.save();
-            } else {
-                order.status = 'delivered';
-                await order.save();
-            }
+            // Dismiss means complaint is invalid - no financial action, no status change
+            // Just mark the complaint as resolved and keep everything as is
+            console.log(chalk.yellow(`→ Complaint dismissed. No funds released. Order/item status unchanged.`));
         } else {
             throw { status: 400, message: 'Invalid resolution decision' };
         }
 
-        // Final Status Sync
-        if (order) {
+        // Final Status Sync - only for decisions that should change status
+        if (order && decision !== 'dismiss') {
             const activeItems = await MarketOrderItem.countDocuments({
                 orderId: order._id,
                 status: { $nin: ['delivered', 'cancelled', 'refunded'] }
