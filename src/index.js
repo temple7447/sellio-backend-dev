@@ -94,17 +94,6 @@ if (process.env.NODE_ENV !== 'production') {
     });
 }
 
-// Temporary: 3s request delay + 3s response delay (6s total)
-app.use((req, res, next) => {
-  setTimeout(() => {
-    ['send', 'json'].forEach(m => {
-      const orig = res[m].bind(res);
-      res[m] = (b) => setTimeout(() => orig(b), 3000);
-    });
-    next();
-  }, 3000);
-});
-
 app.get("/", (req, res) => {
     res.json({
         status: 'success',
