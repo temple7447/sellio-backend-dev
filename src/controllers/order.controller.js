@@ -273,7 +273,7 @@ class OrderController {
     async adminCancelAndRefund(req, res) {
         try {
             const { amount } = req.body;
-            
+
             if (!amount) {
                 return res.status(400).json({
                     success: false,
@@ -296,6 +296,25 @@ class OrderController {
             res.status(error.status || 400).json({
                 success: false,
                 message: error.message || 'Cancel and refund failed'
+            });
+        }
+    }
+
+    async adminCancelUnpaidOrder(req, res) {
+        try {
+            const { reason } = req.body;
+            const result = await orderService.adminCancelUnpaidOrder(
+                req.params.orderId,
+                req.user._id,
+                reason
+            );
+            console.log(chalk.red(`✗ Unpaid order cancelled by admin: ${req.params.orderId}`));
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Admin cancel unpaid order failed:'), error);
+            res.status(error.status || 400).json({
+                success: false,
+                message: error.message || 'Failed to cancel order'
             });
         }
     }

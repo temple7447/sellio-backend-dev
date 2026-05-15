@@ -73,6 +73,9 @@ router.post('/admin/:orderId/verify-payment', auth, isAdmin, orderController.adm
 // Admin: Cancel order and refund buyer (for underpayment cases)
 router.post('/admin/:orderId/cancel-refund', auth, isAdmin, orderController.adminCancelAndRefund);
 
+// Admin: Cancel an unpaid order (no proof uploaded, no refund needed)
+router.post('/admin/:orderId/cancel-unpaid', auth, isAdmin, orderController.adminCancelUnpaidOrder);
+
 // General order detail route for authenticated users (Buyer, Seller, Admin)
 router.get('/:orderId', auth, orderController.getOrderDetail);
 

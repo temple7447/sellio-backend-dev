@@ -1341,6 +1341,76 @@ class OrderService {
         };
     }
 
+    async adminCancelUnpaidOrder(orderId, adminId, reason = 'Payment not received') {
+        const order = await MarketOrder.findById(orderId);
+
+        if (!order) {
+            throw { status: 404, message: 'Order not found' };
+        }
+
+        if (order.payment.status !== 'pending') {
+            throw {
+                status: 400,
+                message: `Cannot cancel this order. Payment status is "${order.payment.status}". Use the refund endpoint for orders with uploaded proof.`
+            };
+        }
+
+        // Restore product inventory
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const orderItems = await MarketOrderItem.find({ orderId: order._id });
+
+        for (const item of orderItems) {
+            await MarketProduct.updateOne(
+                { _id: item.productId },
+                { $inc: { 'inventory.quantity': item.quantity } }
+            );
+        }
+
+        // Cancel all order items
+        await MarketOrderItem.updateMany(
+            { orderId: order._id },
+            { status: 'cancelled', cancellationReason: reason, cancelledBy: 'admin' }
+        );
+
+        // Cancel the order
+        order.status = 'cancelled';
+        order.payment.status = 'failed';
+        order.cancellationReason = reason;
+        order.cancelledBy = 'admin';
+        await order.save();
+
+        // Notify buyer
+        if (order.customerId) {
+            try {
+                const customer = await MarketUser.findById(order.customerId);
+                if (customer) {
+                    const emailService = require('./email.service');
+                    const html = emailService.orderCancelled(
+                        customer.email,
+                        customer.fullName || 'Customer',
+                        order._id.toString(),
+                        reason,
+                        0
+                    );
+                    await emailService.sendEmail(customer.email, `Order Cancelled - Order ${order._id}`, html);
+                }
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send cancellation email: ${emailError.message}`));
+            }
+        }
+
+        return {
+            success: true,
+            message: 'Order cancelled successfully. No payment was made so no refund is required.',
+            order: {
+                id: order._id,
+                status: order.status,
+                payment: { status: order.payment.status },
+                cancellationReason: reason
+            }
+        };
+    }
+
     async getSellerOrders(sellerId, query = {}) {
         const { page = 1, limit = 10, status, sort = '-createdAt' } = query;
         const skip = (page - 1) * limit;
