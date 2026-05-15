@@ -1,7 +1,6 @@
 const MarketOrder = require('../models/MarketOrder');
 const MarketProduct = require('../models/MarketProduct');
 const { MarketUser } = require('../models/MarketUser');  // Fix import to use destructuring
-const axios = require('axios');
 const config = require('../config/config');
 const paystackService = require('../utils/paystack');
 const mongoose = require('mongoose');  // Add this import at the top
@@ -74,7 +73,7 @@ class OrderService {
             guestEmail,
             status: 'pending',
             payment: {
-                method: 'paystack',
+                method: 'direct_transfer',
                 status: 'pending'
             },
             shipping: {
@@ -111,7 +110,7 @@ class OrderService {
 
     async createCustomerOrder(customerId, orderData) {
         try {
-            const { items, shippingDetails, paymentMethod = 'paystack' } = orderData;
+            const { items, shippingDetails, paymentMethod = 'direct_transfer' } = orderData;
 
             if (!shippingDetails) {
                 throw {
@@ -244,41 +243,22 @@ class OrderService {
             throw { status: 404, message: 'Order not found' };
         }
 
-        // Initialize Paystack transaction
-        try {
-            let email = order.shipping?.address?.email || order.guestEmail;
-
-            if (!email && order.customerId) {
-                const { MarketUser } = require('../models/MarketUser');
-                const user = await MarketUser.findById(order.customerId);
-                if (user) {
-                    email = user.email;
-                }
+        return {
+            order,
+            payment: {
+                method: 'direct_transfer',
+                paymentUrl: null,
+                reference: `ORD-${order._id}-DT`,
+                amount: order.totals.final,
+                currency: 'NGN',
+                bankDetails: {
+                    accountName: 'Sellio Enterprise',
+                    accountNumber: '816631442',
+                    bankName: 'MoniePoint MFB'
+                },
+                instructions: 'Please make a direct bank transfer to the account above and upload your payment proof in your order history.'
             }
-
-            if (!email) {
-                throw { status: 400, message: 'Buyer email is required for payment' };
-            }
-
-            const response = await paystackService.initializeTransaction(
-                email,
-                order.totals.final,
-                `ORD-${order._id}`,
-                `${config.FRONTEND_URL}/payment/verify/${order._id}`
-            );
-
-            return {
-                order,
-                paymentUrl: response.data.authorization_url,
-                reference: response.data.reference
-            };
-        } catch (error) {
-            throw {
-                status: 500,
-                message: 'Payment initialization failed',
-                error: error.response?.data || error.message
-            };
-        }
+        };
     }
 
     async verifyPayment(reference) {
@@ -931,67 +911,19 @@ class OrderService {
             const MarketOrderItem = require('../models/MarketOrderItem');
             const items = await MarketOrderItem.find({ orderId: order._id });
 
-            // Check if amount exceeds 800,000 Naira - use direct transfer
-            if (order.totals.final > 800000) {
-                return {
-                    payment: {
-                        method: 'direct_transfer',
-                        paymentUrl: null,
-                        reference: `ORD-${order._id}-DT`,
-                        amount: order.totals.final,
-                        currency: 'NGN',
-                        bankDetails: {
-                            accountName: 'Sellio Enterprise',
-                            accountNumber: '816631442',
-                            bankName: 'MoniePoint MFB'
-                        },
-                        instructions: 'Please make a direct transfer to the account above and upload your payment proof in your order history.'
-                    },
-                    order: {
-                        id: order._id,
-                        status: order.status,
-                        items: items.map(item => ({
-                            product: item.productId,
-                            quantity: item.quantity,
-                            price: item.price
-                        })),
-                        totals: order.totals
-                    },
-                    customer: {
-                        email: customer.email,
-                        shipping: order.shipping.address
-                    }
-                };
-            }
-
-            // Initialize Paystack transaction for amounts <= 800,000
-            const response = await axios.post(
-                'https://api.paystack.co/transaction/initialize',
-                {
-                    amount: Math.round(order.totals.final * 100),
-                    email: customer.email,
-                    reference: `ORD-${order._id}`,
-                    metadata: {
-                        order_id: order._id,
-                        customer_id: customerId
-                    },
-                    callback_url: `${config.FRONTEND_URL}/payment/verify/${order._id}`
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
             return {
                 payment: {
-                    method: 'paystack',
-                    paymentUrl: response.data.data.authorization_url,
-                    reference: response.data.data.reference,
+                    method: 'direct_transfer',
+                    paymentUrl: null,
+                    reference: `ORD-${order._id}-DT`,
                     amount: order.totals.final,
-                    currency: 'NGN'
+                    currency: 'NGN',
+                    bankDetails: {
+                        accountName: 'Sellio Enterprise',
+                        accountNumber: '816631442',
+                        bankName: 'MoniePoint MFB'
+                    },
+                    instructions: 'Please make a direct bank transfer to the account above and upload your payment proof in your order history.'
                 },
                 order: {
                     id: order._id,
@@ -1032,10 +964,6 @@ class OrderService {
             throw { status: 400, message: 'Order payment is not pending' };
         }
 
-        if (order.totals.final <= 800000) {
-            throw { status: 400, message: 'This order does not require direct transfer payment' };
-        }
-
         // Validate transferred amount if provided
         if (transferredAmount !== undefined) {
             const expectedAmount = order.totals.final;
@@ -1061,20 +989,38 @@ class OrderService {
         }
         await order.save();
 
-        // Send email notification to customer
+        const emailService = require('./email.service');
+
+        // Notify customer their proof was received
         if (customer) {
             try {
-                const emailService = require('./email.service');
-                const emailHtml = emailService.paymentProofSubmitted(
+                const customerHtml = emailService.paymentProofSubmitted(
                     customer.email,
                     customer.fullName || 'Customer',
                     order._id.toString(),
                     order.totals.final
                 );
-                await emailService.sendEmail(customer.email, 'Payment Proof Submitted - Pending Verification', emailHtml);
+                await emailService.sendEmail(customer.email, 'Payment Proof Submitted - Pending Verification', customerHtml);
                 console.log(chalk.blue(`✓ Payment proof submission email sent to ${customer.email}`));
             } catch (emailError) {
-                console.log(chalk.yellow(`⚠ Failed to send payment proof email: ${emailError.message}`));
+                console.log(chalk.yellow(`⚠ Failed to send payment proof email to customer: ${emailError.message}`));
+            }
+        }
+
+        // Notify admin to review and approve/decline the proof
+        if (config.ADMIN_EMAIL) {
+            try {
+                const adminHtml = emailService.adminPaymentProofAlert(
+                    order._id.toString(),
+                    customer?.fullName || 'Customer',
+                    customer?.email || 'N/A',
+                    order.totals.final,
+                    proofUrl
+                );
+                await emailService.sendEmail(config.ADMIN_EMAIL, `🔔 Payment Proof Awaiting Review - Order ${order._id}`, adminHtml);
+                console.log(chalk.blue(`✓ Admin notified of payment proof for order ${order._id}`));
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send payment proof alert to admin: ${emailError.message}`));
             }
         }
 
@@ -1176,21 +1122,65 @@ class OrderService {
             // Get customer details for email
             const customer = await MarketUser.findById(order.customerId);
 
-            // Send email notification to customer
+            const emailService = require('./email.service');
+
+            // Notify customer that payment is verified
             if (customer) {
                 try {
-                    const emailService = require('./email.service');
-                    const emailHtml = emailService.paymentVerified(
+                    const customerHtml = emailService.paymentVerified(
                         customer.email,
                         customer.fullName || 'Customer',
                         order._id.toString(),
                         order.totals.final
                     );
-                    await emailService.sendEmail(customer.email, '✅ Payment Verified - Order Confirmed!', emailHtml);
+                    await emailService.sendEmail(customer.email, '✅ Payment Verified - Order Confirmed!', customerHtml);
                     console.log(chalk.blue(`✓ Payment verification email sent to ${customer.email}`));
                 } catch (emailError) {
-                    console.log(chalk.yellow(`⚠ Failed to send payment verification email: ${emailError.message}`));
+                    console.log(chalk.yellow(`⚠ Failed to send payment verification email to customer: ${emailError.message}`));
                 }
+            }
+
+            // Notify each seller that they have a new confirmed order to fulfill
+            try {
+                const orderItems = await MarketOrderItem.find({ orderId: order._id })
+                    .populate('productId', 'name sku')
+                    .populate('sellerId', 'email fullName businessName')
+                    .lean();
+
+                const sellerMap = new Map();
+                for (const item of orderItems) {
+                    const seller = item.sellerId;
+                    if (!seller) continue;
+                    const key = seller._id.toString();
+                    if (!sellerMap.has(key)) sellerMap.set(key, { seller, items: [] });
+                    sellerMap.get(key).items.push({
+                        productName: item.productId?.name || 'Product',
+                        sku: item.productId?.sku || null,
+                        quantity: item.quantity,
+                        price: item.price
+                    });
+                }
+
+                const buyerName = customer?.fullName || 'A customer';
+                for (const { seller, items } of sellerMap.values()) {
+                    try {
+                        const sellerSubtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+                        const sellerHtml = emailService.sellerNewOrder(
+                            seller.email,
+                            seller.businessName || seller.fullName || 'Seller',
+                            order._id.toString(),
+                            items,
+                            sellerSubtotal,
+                            buyerName
+                        );
+                        await emailService.sendEmail(seller.email, `🎉 New Order Confirmed - Order ${order._id}`, sellerHtml);
+                        console.log(chalk.blue(`✓ Seller ${seller.email} notified of new order`));
+                    } catch (err) {
+                        console.log(chalk.yellow(`⚠ Failed to notify seller ${seller.email}: ${err.message}`));
+                    }
+                }
+            } catch (sellerEmailError) {
+                console.log(chalk.yellow(`⚠ Failed to send seller notifications: ${sellerEmailError.message}`));
             }
 
             return {
@@ -1514,14 +1504,17 @@ class OrderService {
                 page = 1,
                 limit = 10,
                 status,
+                paymentStatus,
                 sort = '-createdAt',
                 search
             } = query;
 
             const skip = (page - 1) * limit;
             // Include all payment statuses except 'failed' and 'refunded'
-            const filter = { 
-                'payment.status': { $in: ['pending', 'pending_verification', 'processing', 'completed'] }
+            const filter = {
+                'payment.status': paymentStatus
+                    ? paymentStatus
+                    : { $in: ['pending', 'pending_verification', 'processing', 'completed'] }
             };
             if (status) filter.status = status;
 

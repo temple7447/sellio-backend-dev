@@ -442,6 +442,37 @@ class EmailService {
     }
 
     /**
+     * Admin: New Payment Proof Alert
+     */
+    adminPaymentProofAlert(orderId, buyerName, buyerEmail, amount, proofUrl) {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #d32f2f;">🔔 Payment Proof Needs Review</h1>
+                <p>A buyer has uploaded a payment proof and is awaiting your verification.</p>
+
+                <div style="background: #fce4ec; border-left: 4px solid #d32f2f; padding: 15px; margin: 15px 0;">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Buyer:</strong> ${buyerName} (${buyerEmail})</p>
+                    <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+                    <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                ${proofUrl ? `<p><strong>Payment Proof:</strong> <a href="${proofUrl}" target="_blank">View Proof Screenshot</a></p>` : ''}
+
+                <p style="text-align: center; margin: 20px 0;">
+                    <a href="${process.env.FRONTEND_URL}/admin/orders/${orderId}"
+                       style="background: #d32f2f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                        Review &amp; Verify Payment
+                    </a>
+                </p>
+
+                <p style="color: #666; font-size: 12px;">Please approve or decline this payment so the order can proceed.</p>
+            </div>
+        `;
+        return html;
+    }
+
+    /**
      * Payment Verified Email (to customer)
      */
     paymentVerified(userEmail, userName, orderId, amount) {

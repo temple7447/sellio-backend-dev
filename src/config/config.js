@@ -13,6 +13,7 @@ module.exports = {
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     ADMIN_SETUP_KEY: process.env.ADMIN_SETUP_KEY,
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL,
     PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
     FRONTEND_URL: process.env.FRONTEND_URL,
     RATE_LIMIT: {
