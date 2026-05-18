@@ -253,7 +253,7 @@ class OrderService {
                 currency: 'NGN',
                 bankDetails: {
                     accountName: 'Sellio Enterprise',
-                    accountNumber: '816631442',
+                    accountNumber: '8166313442',
                     bankName: 'MoniePoint MFB'
                 },
                 instructions: 'Please make a direct bank transfer to the account above and upload your payment proof in your order history.'
@@ -920,7 +920,7 @@ class OrderService {
                     currency: 'NGN',
                     bankDetails: {
                         accountName: 'Sellio Enterprise',
-                        accountNumber: '816631442',
+                        accountNumber: '8166313442',
                         bankName: 'MoniePoint MFB'
                     },
                     instructions: 'Please make a direct bank transfer to the account above and upload your payment proof in your order history.'
