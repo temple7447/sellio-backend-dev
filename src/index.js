@@ -96,7 +96,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Add 3 second delay to all requests and responses
 app.use(async (req, res, next) => {
-    await new Promise(resolve => setTimeout(resolve, 4000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
     next();
 });
 
