@@ -94,10 +94,15 @@ if (process.env.NODE_ENV !== 'production') {
     });
 }
 
-// Add 3 second delay to all requests and responses
-app.use(async (req, res, next) => {
-    await new Promise(resolve => setTimeout(resolve, 7000));
+// Temporary: 3.5s request delay + 3.5s response delay (7s total)
+app.use((req, res, next) => {
+  setTimeout(() => {
+    ['send', 'json'].forEach(m => {
+      const orig = res[m].bind(res);
+      res[m] = (b) => setTimeout(() => orig(b), 3500);
+    });
     next();
+  }, 3500);
 });
 
 app.get("/", (req, res) => {
