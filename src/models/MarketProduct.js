@@ -25,6 +25,12 @@ const productSchema = new mongoose.Schema({
             required: true,
             min: 0
         },
+        // The original price the seller entered before the platform fee was added.
+        // Sellers are credited this amount when a buyer completes an order.
+        sellerPrice: {
+            type: Number,
+            min: 0
+        },
         discount: {
             type: Number,
             min: 0,

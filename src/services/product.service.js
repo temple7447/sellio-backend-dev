@@ -5,6 +5,34 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 const mongoose = require('mongoose');
 const MarketOrder = require('../models/MarketOrder');
 const discordLogger = require('../utils/discordLogger');
+const RewardSettings = require('../models/RewardSettings');
+
+/**
+ * Given a seller-entered price and the current pricing tiers, return the
+ * buyer-facing price (seller price + platform fee) and the fee details.
+ */
+async function applyPlatformFee(sellerPrice) {
+    try {
+        const settings = await RewardSettings.getSettings();
+        const tiers = settings.pricingFees || [];
+        const tier = tiers.find(
+            (t) => sellerPrice >= t.minPrice && (t.maxPrice == null || sellerPrice <= t.maxPrice)
+        );
+        if (!tier || tier.feePercent === 0) {
+            return { buyerPrice: sellerPrice, sellerPrice, feePercent: 0, feeAmount: 0 };
+        }
+        const feeAmount = Math.round(sellerPrice * (tier.feePercent / 100));
+        return {
+            buyerPrice: sellerPrice + feeAmount,
+            sellerPrice,
+            feePercent: tier.feePercent,
+            feeAmount,
+        };
+    } catch {
+        // If fee lookup fails, fall back to no fee so product creation isn't blocked
+        return { buyerPrice: sellerPrice, sellerPrice, feePercent: 0, feeAmount: 0 };
+    }
+}
 
 class ProductService {
     async createProduct(sellerId, productData, files) {
@@ -99,12 +127,16 @@ class ProductService {
                 };
             }
 
+            // Apply platform fee: buyer pays seller_price + fee; seller earns seller_price
+            const feeResult = await applyPlatformFee(price.current);
+
             // Create and save the product
             const product = new MarketProduct({
                 name: productData.name,
                 description: productData.description,
                 price: {
-                    current: price.current,
+                    current: feeResult.buyerPrice,   // what the buyer sees / pays
+                    sellerPrice: feeResult.sellerPrice, // what the seller entered / earns
                     discount: price.discount
                 },
                 category: category._id,
@@ -451,6 +483,17 @@ class ProductService {
             const existingImages = product.images || [];
             const newImages = [...existingImages, ...imageUploads];
             filteredUpdates.images = newImages;
+        }
+
+        // Re-apply platform fee whenever the price is updated
+        if (filteredUpdates.price && filteredUpdates.price.current != null) {
+            const rawSellerPrice = filteredUpdates.price.current;
+            const feeResult = await applyPlatformFee(rawSellerPrice);
+            filteredUpdates.price = {
+                ...filteredUpdates.price,
+                current: feeResult.buyerPrice,
+                sellerPrice: feeResult.sellerPrice,
+            };
         }
 
         Object.assign(product, filteredUpdates);

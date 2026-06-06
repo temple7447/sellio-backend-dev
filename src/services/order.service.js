@@ -49,7 +49,8 @@ class OrderService {
                 };
             }
 
-            const itemPrice = product.price.current;
+            const itemPrice = product.price.current;   // buyer-facing price (with platform fee)
+            const itemSellerPrice = product.price.sellerPrice ?? product.price.current; // seller earns this
             const itemTotal = itemPrice * item.quantity;
             subtotal += itemTotal;
 
@@ -57,7 +58,8 @@ class OrderService {
                 productId: product._id,
                 sellerId: product.sellerId,
                 quantity: item.quantity,
-                price: itemPrice
+                price: itemPrice,
+                sellerPrice: itemSellerPrice,
             });
         }
 
@@ -99,6 +101,7 @@ class OrderService {
                 sellerId: item.sellerId,
                 quantity: item.quantity,
                 price: item.price,
+                sellerPrice: item.sellerPrice,
                 status: 'pending'
             }).save();
         });
@@ -159,7 +162,8 @@ class OrderService {
                     };
                 }
 
-                const itemPrice = product.price.current;
+                const itemPrice = product.price.current;   // buyer-facing price (with platform fee)
+                const itemSellerPrice = product.price.sellerPrice ?? product.price.current; // seller earns this
                 const itemTotal = itemPrice * item.quantity;
                 subtotal += itemTotal;
 
@@ -167,7 +171,8 @@ class OrderService {
                     productId: product._id,
                     sellerId: product.sellerId,
                     quantity: item.quantity,
-                    price: itemPrice
+                    price: itemPrice,
+                    sellerPrice: itemSellerPrice,
                 });
             }
 
@@ -214,6 +219,7 @@ class OrderService {
                     sellerId: item.sellerId,
                     quantity: item.quantity,
                     price: item.price,
+                    sellerPrice: item.sellerPrice,
                     status: 'pending'
                 }).save();
             });
@@ -882,9 +888,11 @@ class OrderService {
                     continue;
                 }
 
+                // Credit seller their original price (before platform fee), not the buyer-paid amount
+                const sellerEarning = (item.sellerPrice ?? item.price) * item.quantity;
                 await walletService.credit(
                     item.sellerId,
-                    item.totalPrice,
+                    sellerEarning,
                     `Payment for order item ${item._id} (Order: ${order._id})`,
                     {
                         type: 'earning',
@@ -2281,11 +2289,12 @@ class OrderService {
                 await MarketOrderItem.updateMany({ orderId: order._id }, { status: 'refunded' });
             }
         } else if (decision === 'release_to_seller') {
-            // Case: Release funds to seller
+            // Case: Release funds to seller — always credit seller's original price, not buyer-paid amount
             if (item) {
+                const sellerEarning = (item.sellerPrice ?? item.price) * item.quantity;
                 await walletService.credit(
                     item.sellerId,
-                    item.totalPrice,
+                    sellerEarning,
                     `Payment released after dispute resolution: ${complaintId}`,
                     { type: 'earning', relatedOrder: order._id, metadata: { complaintId } }
                 );
@@ -2296,9 +2305,10 @@ class OrderService {
                 const orderItems = await MarketOrderItem.find({ orderId: order._id });
                 for (const oi of orderItems) {
                     if (oi.status === 'disputed') {
+                        const oiSellerEarning = (oi.sellerPrice ?? oi.price) * oi.quantity;
                         await walletService.credit(
                             oi.sellerId,
-                            oi.totalPrice,
+                            oiSellerEarning,
                             `Payment released after dispute resolution: ${complaintId}`,
                             { type: 'earning', relatedOrder: order._id, metadata: { complaintId } }
                         );

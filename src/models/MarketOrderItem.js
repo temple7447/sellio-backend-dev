@@ -28,6 +28,11 @@ const orderItemSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    // Per-unit amount credited to the seller (seller's listed price before platform fee).
+    // May equal price when no fee tiers exist (legacy products).
+    sellerPrice: {
+        type: Number
+    },
     totalPrice: {
         type: Number
     },
@@ -69,6 +74,8 @@ const orderItemSchema = new mongoose.Schema({
 // Calculate totalPrice before saving
 orderItemSchema.pre('save', function (next) {
     this.totalPrice = this.price * this.quantity;
+    // sellerPrice defaults to price when not explicitly set (legacy / no-fee products)
+    if (this.sellerPrice == null) this.sellerPrice = this.price;
     next();
 });
 
