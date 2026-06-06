@@ -1537,8 +1537,8 @@ class OrderService {
                                 image: Array.isArray(product.images) ? product.images[0]?.url : null
                             },
                             quantity: item.quantity,
-                            price: item.price,
-                            total: item.totalPrice || (item.price * item.quantity)
+                            price: item.sellerPrice ?? item.price,
+                            total: (item.sellerPrice ?? item.price) * item.quantity
                         }],
                         status: order.status,
                         itemStatus: item.status,

@@ -737,30 +737,45 @@ class ProductService {
     }
 
     async getSellerDashboardStats(sellerId) {
-        // Overall, all-time stats for the seller (no month-based calculations)
-        // Totals are computed across the full dataset.
+        const MarketOrderItem = require('../models/MarketOrderItem');
+        const sellerObjId = new mongoose.Types.ObjectId(sellerId);
 
-        // Aggregate total sales from PAID orders only (payment.status = 'completed')
-        const salesAgg = await MarketOrder.aggregate([
-            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId), 'payment.status': 'completed' } },
-            { $unwind: '$items' },
-            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
-            { $group: { _id: null, total: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } }
+        // Total earnings — use sellerPrice (what the seller actually earns after platform fee)
+        const salesAgg = await MarketOrderItem.aggregate([
+            { $match: { sellerId: sellerObjId } },
+            {
+                $lookup: {
+                    from: 'marketorders',
+                    localField: 'orderId',
+                    foreignField: '_id',
+                    as: 'order'
+                }
+            },
+            { $unwind: '$order' },
+            { $match: { 'order.payment.status': 'completed' } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: { $multiply: [{ $ifNull: ['$sellerPrice', '$price'] }, '$quantity'] } }
+                }
+            }
         ]);
 
-        // Count unique customers (registered + guests) across all time
+        // Count unique orders for this seller
+        const orderIds = await MarketOrderItem.distinct('orderId', { sellerId: sellerObjId });
+
+        // Count unique customers across those orders
         const uniqueCustomersAgg = await MarketOrder.aggregate([
-            { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
+            { $match: { _id: { $in: orderIds } } },
             { $group: { _id: { $cond: [{ $ifNull: ['$customerId', false] }, '$customerId', '$guestEmail'] } } },
             { $count: 'total' }
         ]);
 
         const totalSales = salesAgg[0]?.total || 0;
         const totalProducts = await MarketProduct.countDocuments({ sellerId });
-        const totalOrders = await MarketOrder.countDocuments({ 'items.sellerId': sellerId });
+        const totalOrders = orderIds.length;
         const totalCustomers = uniqueCustomersAgg[0]?.total || 0;
 
-        // Return only overall totals (no monthly growth or overview)
         return {
             totalSales,
             totalOrders,
