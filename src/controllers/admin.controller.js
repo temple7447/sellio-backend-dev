@@ -127,6 +127,27 @@ class AdminController {
         }
     }
 
+    async getPricingFees(req, res) {
+        try {
+            const fees = await adminService.getPricingFees();
+            res.json({ success: true, data: fees });
+        } catch (error) {
+            console.error(chalk.red('✗ Get pricing fees failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
+    async updatePricingFees(req, res) {
+        try {
+            const result = await adminService.updatePricingFees(req.user._id, req.body.tiers);
+            console.log(chalk.green('✓ Pricing fees updated successfully'));
+            res.json({ success: true, ...result });
+        } catch (error) {
+            console.error(chalk.red('✗ Update pricing fees failed:', error.message));
+            res.status(error.status || 500).json({ message: error.message });
+        }
+    }
+
     async getReferrals(req, res) {
         try {
             const result = await adminService.getReferrals(req.query);

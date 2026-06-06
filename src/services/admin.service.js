@@ -638,6 +638,42 @@ class AdminService {
         };
     }
 
+    async getPricingFees() {
+        const RewardSettings = require('../models/RewardSettings');
+        const settings = await RewardSettings.getSettings();
+        return settings.pricingFees || [];
+    }
+
+    async updatePricingFees(adminId, tiers) {
+        const RewardSettings = require('../models/RewardSettings');
+
+        if (!Array.isArray(tiers) || tiers.length === 0) {
+            throw { status: 400, message: 'pricingFees must be a non-empty array of tiers' };
+        }
+
+        for (const tier of tiers) {
+            if (typeof tier.minPrice !== 'number' || tier.minPrice < 0) {
+                throw { status: 400, message: 'Each tier must have a non-negative minPrice' };
+            }
+            if (tier.maxPrice !== null && (typeof tier.maxPrice !== 'number' || tier.maxPrice <= tier.minPrice)) {
+                throw { status: 400, message: 'maxPrice must be null (unlimited) or a number greater than minPrice' };
+            }
+            if (typeof tier.feePercent !== 'number' || tier.feePercent < 0 || tier.feePercent > 100) {
+                throw { status: 400, message: 'feePercent must be between 0 and 100' };
+            }
+        }
+
+        const settings = await RewardSettings.getSettings();
+        settings.pricingFees = tiers;
+        settings.lastUpdatedBy = adminId;
+        await settings.save();
+
+        return {
+            message: 'Pricing fees updated successfully',
+            pricingFees: settings.pricingFees
+        };
+    }
+
     async getReferrals(query) {
         const MarketReferral = require('../models/MarketReferral');
         const page = parseInt(query.page) || 1;

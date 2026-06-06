@@ -26,14 +26,14 @@ router.get('/summary', auth, walletController.getSummary);
 
 /**
  * @route   POST /api/wallet/deposit/initialize
- * @desc    Initialize a wallet deposit via Paystack
+ * @desc    Initialize a wallet deposit via Korapay
  * @access  Private
  */
 router.post('/deposit/initialize', auth, walletController.initializeDeposit);
 
 /**
  * @route   GET /api/wallet/deposit/verify/:reference
- * @desc    Verify a wallet deposit via Paystack
+ * @desc    Verify a wallet deposit via Korapay
  * @access  Private
  */
 router.get('/deposit/verify/:reference', auth, walletController.verifyDeposit);
@@ -103,7 +103,7 @@ router.post('/admin/withdrawals/:transactionId/decline', auth, isAdmin, walletCo
 
 /**
  * @route   POST /api/wallet/admin/withdrawals/reconcile
- * @desc    Reconcile pending withdrawals with Paystack to auto-complete successful transfers (Admin only)
+ * @desc    Reconcile pending withdrawals with Korapay to auto-complete successful payouts (Admin only)
  * @access  Private (Admin)
  */
 router.post('/admin/withdrawals/reconcile', auth, isAdmin, walletController.reconcileWithdrawals);

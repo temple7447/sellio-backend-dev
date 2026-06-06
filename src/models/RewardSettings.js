@@ -72,6 +72,20 @@ const rewardSettingsSchema = new mongoose.Schema({
         }
     },
 
+    // Platform pricing fee tiers applied to listed product prices
+    pricingFees: {
+        type: [{
+            minPrice: { type: Number, required: true, min: 0 },
+            maxPrice: { type: Number, default: null }, // null = no upper limit
+            feePercent: { type: Number, required: true, min: 0, max: 100 }
+        }],
+        default: [
+            { minPrice: 0, maxPrice: 10000, feePercent: 4 },
+            { minPrice: 10001, maxPrice: 50000, feePercent: 3 },
+            { minPrice: 50001, maxPrice: null, feePercent: 2 }
+        ]
+    },
+
     // Metadata
     lastUpdatedBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -106,7 +120,12 @@ rewardSettingsSchema.statics.getSettings = async function () {
                 tax: 250,
                 escrowProtectionRate: 0.025,
                 serviceFee: 50
-            }
+            },
+            pricingFees: [
+                { minPrice: 0, maxPrice: 10000, feePercent: 4 },
+                { minPrice: 10001, maxPrice: 50000, feePercent: 3 },
+                { minPrice: 50001, maxPrice: null, feePercent: 2 }
+            ]
         });
     }
 

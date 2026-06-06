@@ -15,6 +15,7 @@ module.exports = {
     ADMIN_SETUP_KEY: process.env.ADMIN_SETUP_KEY,
     ADMIN_EMAIL: process.env.ADMIN_EMAIL,
     PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
+    KORAPAY_SECRET_KEY: process.env.KORAPAY_SECRET_KEY,
     FRONTEND_URL: process.env.FRONTEND_URL,
     RATE_LIMIT: {
         WINDOW_MS: 15 * 60 * 1000, // 15 minutes

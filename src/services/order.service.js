@@ -773,6 +773,44 @@ class OrderService {
             await order.save();
         }
 
+        // Notify buyer their item has shipped
+        try {
+            const emailService = require('./email.service');
+            const populatedItem = await require('../models/MarketOrderItem')
+                .findById(item._id)
+                .populate('productId', 'name')
+                .lean();
+
+            let buyerEmail, buyerName;
+            if (order.customerId) {
+                const buyer = await MarketUser.findById(order.customerId).select('email fullName').lean();
+                buyerEmail = buyer?.email;
+                buyerName = buyer?.fullName || 'Customer';
+            } else {
+                buyerEmail = order.guestEmail || order.shipping?.address?.email;
+                buyerName = order.shipping?.address?.fullName || 'Customer';
+            }
+
+            if (buyerEmail) {
+                const itemsForEmail = [{
+                    productName: populatedItem?.productId?.name || 'Product',
+                    quantity: item.quantity,
+                    sellerName: ''
+                }];
+                const html = emailService.orderShipped(
+                    buyerEmail,
+                    buyerName,
+                    order._id.toString(),
+                    itemsForEmail,
+                    trackingNumber
+                );
+                await emailService.sendEmail(buyerEmail, `📦 Your Item Has Been Shipped - Order ${order._id}`, html);
+                console.log(chalk.blue(`✓ Shipped notification sent to ${buyerEmail}`));
+            }
+        } catch (emailError) {
+            console.log(chalk.yellow(`⚠ Failed to send shipped email: ${emailError.message}`));
+        }
+
         console.log(chalk.green(`✓ Fulfillment proof uploaded for item ${orderItemId} with tracking: ${trackingNumber}`));
         return { item, trackingNumber };
     }
@@ -875,6 +913,43 @@ class OrderService {
             order.status = 'delivered';
             order.shipping.estimatedDelivery = new Date();
             await order.save();
+
+            // Notify buyer their order is fully delivered
+            try {
+                const emailService = require('./email.service');
+                const MarketOrderItem = require('../models/MarketOrderItem');
+                const deliveredItems = await MarketOrderItem.find({ orderId: order._id })
+                    .populate('productId', 'name')
+                    .populate('sellerId', 'businessName fullName')
+                    .lean();
+
+                let buyerEmail, buyerName;
+                if (order.customerId) {
+                    const buyer = await MarketUser.findById(order.customerId).select('email fullName').lean();
+                    buyerEmail = buyer?.email;
+                    buyerName = buyer?.fullName || 'Customer';
+                } else {
+                    buyerEmail = order.guestEmail || order.shipping?.address?.email;
+                    buyerName = order.shipping?.address?.fullName || 'Customer';
+                }
+
+                if (buyerEmail) {
+                    const itemsForEmail = deliveredItems.map(i => ({
+                        productName: i.productId?.name || 'Product',
+                        sellerName: i.sellerId?.businessName || i.sellerId?.fullName || 'Seller'
+                    }));
+                    const html = emailService.orderDelivered(
+                        buyerEmail,
+                        buyerName,
+                        order._id.toString(),
+                        itemsForEmail
+                    );
+                    await emailService.sendEmail(buyerEmail, `✓ Order Delivered - Order ${order._id}`, html);
+                    console.log(chalk.blue(`✓ Delivered notification sent to ${buyerEmail}`));
+                }
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send delivered email: ${emailError.message}`));
+            }
         }
 
         return {

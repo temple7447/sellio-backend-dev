@@ -133,4 +133,9 @@ router.get('/admin/reward-settings', auth, isAdmin, adminController.getRewardSet
 router.put('/admin/reward-settings', auth, isAdmin, adminController.updateRewardSettings);
 router.get('/admin/referrals', auth, isAdmin, adminController.getReferrals);
 
+// Admin - Pricing Fee Tiers (admin manage, public read for seller form)
+router.get('/admin/pricing-fees', auth, isAdmin, adminController.getPricingFees);
+router.put('/admin/pricing-fees', auth, isAdmin, adminController.updatePricingFees);
+router.get('/public/pricing-fees', adminController.getPricingFees);
+
 module.exports = router;

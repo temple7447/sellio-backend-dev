@@ -217,8 +217,8 @@ class ProductService {
         });
 
         const {
-            page = 1,
-            limit = 10,
+            page: _page = 1,
+            limit: _limit = 10,
             category,
             search,
             sort = 'newest',
@@ -227,6 +227,9 @@ class ProductService {
             brands,
             minRating
         } = query;
+
+        const page = parseInt(_page, 10) || 1;
+        const limit = parseInt(_limit, 10) || 10;
 
         // Handle sort options
         let sortOptions = {};
@@ -628,11 +631,14 @@ class ProductService {
 
     async getPublicSellerProducts(sellerId, query = {}) {
         const {
-            page = 1,
-            limit = 12,
+            page: _page = 1,
+            limit: _limit = 12,
             excludeProduct,
             sort = '-createdAt'
         } = query;
+
+        const page = parseInt(_page, 10) || 1;
+        const limit = parseInt(_limit, 10) || 12;
 
         // Check if seller exists and is verified
         const seller = await MarketUser.findOne({
@@ -795,6 +801,10 @@ class ProductService {
                 rating: product.metadata.rating,
                 badge: this.getProductBadge(product),
                 image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
+                inventory: {
+                    quantity: product.inventory?.quantity ?? 0,
+                    lowStockAlert: product.inventory?.lowStockAlert ?? 5
+                },
                 stats: {
                     sales: product.metadata.sales,
                     views: product.metadata.views

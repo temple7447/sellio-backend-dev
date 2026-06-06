@@ -497,6 +497,68 @@ class EmailService {
 
         return html;
     }
+
+    /**
+     * Admin: New Withdrawal Request Alert
+     */
+    adminWithdrawalAlert(userName, userEmail, userRole, amount, feeDetails = null) {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #d32f2f;">🔔 New Withdrawal Request</h1>
+                <p>A user has submitted a withdrawal request that requires your attention.</p>
+
+                <div style="background: #fce4ec; border-left: 4px solid #d32f2f; padding: 15px; margin: 15px 0;">
+                    <p><strong>User:</strong> ${userName} (${userEmail})</p>
+                    <p><strong>Role:</strong> ${userRole}</p>
+                    ${feeDetails ? `
+                    <p><strong>Requested Amount:</strong> ₦${feeDetails.originalAmount?.toLocaleString()}</p>
+                    <p><strong>Fee (${feeDetails.feePercentage}%):</strong> ₦${feeDetails.feeAmount?.toLocaleString()}</p>
+                    <p><strong>Amount to Transfer:</strong> ₦${feeDetails.amountAfterFee?.toLocaleString()}</p>
+                    ` : `<p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>`}
+                    <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <p style="text-align: center; margin: 20px 0;">
+                    <a href="${process.env.FRONTEND_URL}/admin/withdrawals"
+                       style="background: #d32f2f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                        Review Withdrawal Requests
+                    </a>
+                </p>
+
+                <p style="color: #666; font-size: 12px;">Please review and process this request promptly.</p>
+            </div>
+        `;
+
+        return html;
+    }
+
+    /**
+     * Withdrawal Request Received Email (to user)
+     */
+    withdrawalRequested(userEmail, userName, amount, feeDetails = null) {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #ff9800;">⏳ Withdrawal Request Received</h1>
+                <p>Hi ${userName},</p>
+                <p>Your withdrawal request has been received and is being processed.</p>
+
+                <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0;">
+                    ${feeDetails ? `
+                    <p><strong>Requested Amount:</strong> ₦${feeDetails.originalAmount?.toLocaleString()}</p>
+                    <p><strong>Fee (${feeDetails.feePercentage}%):</strong> ₦${feeDetails.feeAmount?.toLocaleString()}</p>
+                    <p><strong>Amount to be Transferred:</strong> ₦${feeDetails.amountAfterFee?.toLocaleString()}</p>
+                    ` : `<p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>`}
+                    <p><strong>Status:</strong> PENDING</p>
+                    <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <p>We will notify you once your withdrawal has been processed. This typically takes 1-3 business days.</p>
+                <p style="color: #666; font-size: 12px;">If you did not initiate this request, please contact our support team immediately.</p>
+            </div>
+        `;
+
+        return html;
+    }
 }
 
 module.exports = new EmailService();

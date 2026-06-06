@@ -217,10 +217,10 @@ class WalletService {
     }
 
     /**
-     * Initialize a wallet deposit via Paystack
+     * Initialize a wallet deposit via Korapay
      */
     async initializeDeposit(userId, amount) {
-        const paystack = require('../utils/paystack');
+        const korapay = require('../utils/korapay');
         const config = require('../config/config');
         const user = await MarketUser.findById(userId);
 
@@ -239,50 +239,52 @@ class WalletService {
             balanceBefore: wallet.balance,
             balanceAfter: wallet.balance, // Will be updated on verification
             reference,
-            description: 'Wallet deposit via Paystack',
+            description: 'Wallet deposit via Korapay',
             status: 'pending',
-            paymentGateway: 'paystack',
+            paymentGateway: 'korapay',
             metadata: {
                 initializedAt: new Date(),
                 amount
             }
         });
 
-        // 2. Initialize Paystack transaction
+        // 2. Initialize Korapay checkout
         try {
-            const callbackUrl = `${config.FRONTEND_URL}/deposit/verify/${reference}`;
-            const response = await paystack.initializeTransaction(
-                user.email,
+            const redirectUrl = `${config.FRONTEND_URL}/deposit/verify/${reference}`;
+            const notificationUrl = `${config.BACKEND_URL || config.FRONTEND_URL}/api/wallet/deposit/webhook`;
+
+            const response = await korapay.initializePayment({
+                email: user.email,
+                name: user.fullName || user.email,
                 amount,
                 reference,
-                callbackUrl
-            );
+                redirectUrl,
+                notificationUrl
+            });
 
             return {
                 transaction,
-                authorizationUrl: response.data.authorization_url,
-                accessCode: response.data.access_code,
+                checkoutUrl: response.data.checkout_url,
                 reference: response.data.reference
             };
         } catch (error) {
-            // Update transaction to failed if initialization fails
             transaction.status = 'failed';
-            transaction.metadata.error = error.message || 'Paystack initialization failed';
+            transaction.metadata.error = error.message || 'Korapay initialization failed';
             await transaction.save();
 
             throw {
                 status: 500,
-                message: 'Failed to initialize Paystack transaction',
+                message: 'Failed to initialize Korapay payment',
                 details: error.message
             };
         }
     }
 
     /**
-     * Verify a wallet deposit
+     * Verify a wallet deposit via Korapay
      */
     async verifyDeposit(userId, reference) {
-        const paystack = require('../utils/paystack');
+        const korapay = require('../utils/korapay');
 
         // 1. Find the transaction
         const transaction = await WalletTransaction.findOne({ reference, userId });
@@ -297,9 +299,9 @@ class WalletService {
             };
         }
 
-        // 2. Verify with Paystack
+        // 2. Verify with Korapay
         try {
-            const response = await paystack.verifyTransaction(reference);
+            const response = await korapay.verifyPayment(reference);
             const paymentData = response.data;
 
             if (paymentData.status === 'success') {
@@ -308,13 +310,13 @@ class WalletService {
                 const creditResult = await this.credit(userId, transaction.amount, transaction.description, {
                     type: 'deposit',
                     reference: newReference,
-                    paymentGateway: 'paystack',
+                    paymentGateway: 'korapay',
                     status: 'completed',
                     metadata: {
                         ...transaction.metadata,
-                        paidAt: paymentData.paid_at,
-                        channel: paymentData.channel,
-                        paystackData: paymentData,
+                        paidAt: paymentData.paid_at || new Date(),
+                        channel: paymentData.payment_type,
+                        korapayData: paymentData,
                         originalReference: transaction.reference
                     }
                 });
@@ -325,7 +327,7 @@ class WalletService {
                 transaction.metadata = {
                     ...transaction.metadata,
                     verifiedAt: new Date(),
-                    paystackData: paymentData
+                    korapayData: paymentData
                 };
                 await transaction.save();
 
@@ -335,15 +337,14 @@ class WalletService {
                     newBalance: creditResult.balanceAfter
                 };
             } else {
-                // Update transaction status if not successful
-                transaction.status = paystack.getTransactionStatus(paymentData.status);
-                transaction.metadata.paystackError = paymentData.gateway_response;
+                transaction.status = korapay.getTransactionStatus(paymentData.status);
+                transaction.metadata.korapayError = paymentData.status;
                 await transaction.save();
 
                 return {
                     success: false,
                     status: transaction.status,
-                    message: paymentData.gateway_response || 'Payment failed',
+                    message: `Payment ${paymentData.status}`,
                     transaction
                 };
             }
@@ -351,7 +352,7 @@ class WalletService {
             console.error(chalk.red('✗ Deposit verification failed:'), error);
             throw {
                 status: 500,
-                message: 'Error verifying deposit with Paystack',
+                message: 'Error verifying deposit with Korapay',
                 details: error.message
             };
         }
@@ -392,21 +393,20 @@ class WalletService {
     }
 
     /**
-     * Get list of banks from Paystack
+     * Get list of banks from Korapay
      */
     async getBanks() {
-        const paystack = require('../utils/paystack');
-        const response = await paystack.getBanks();
+        const korapay = require('../utils/korapay');
+        const response = await korapay.getBanks();
 
         // Inject Test Bank for sandboxing
         if (response.status && response.data) {
             response.data.unshift({
-                name: "Test Bank (Paystack Sandbox)",
-                slug: "test-bank-sandbox",
-                code: "001",
+                name: 'Test Bank (Sandbox)',
+                slug: 'test-bank-sandbox',
+                code: '001',
                 active: true,
-                is_deleted: false,
-                type: "nuban"
+                type: 'nuban'
             });
         }
 
@@ -414,11 +414,11 @@ class WalletService {
     }
 
     /**
-     * Verify account number with bank code
+     * Verify account number with bank code via Korapay
      */
     async verifyAccount(accountNumber, bankCode) {
-        const paystack = require('../utils/paystack');
-        return await paystack.verifyAccountNumber(accountNumber, bankCode);
+        const korapay = require('../utils/korapay');
+        return await korapay.verifyAccount(accountNumber, bankCode);
     }
 
     /**
@@ -426,7 +426,7 @@ class WalletService {
      */
     async requestWithdrawal(userId, amount) {
         const RewardSettings = require('../models/RewardSettings');
-        const paystack = require('../utils/paystack');
+        const korapay = require('../utils/korapay');
         const settings = await RewardSettings.getSettings();
 
         // 1. Check minimum withdrawal amount
@@ -497,84 +497,59 @@ class WalletService {
         transaction.markModified('metadata');
         await transaction.save();
 
-        // 5. Create recipient and initiate Paystack transfer
+        // 5. Initiate Korapay payout
         try {
-            // Create or get transfer recipient
-            let recipientCode = user.bankAccount.recipientCode;
-            if (!recipientCode) {
-                // SIMULATION: If bankCode is 001 (Test Bank), simulate a success
-                if (user.bankAccount.bankCode === '001') {
-                    console.log(chalk.yellow('ℹ Sandbox: Simulating Paystack recipient creation for Test Bank'));
-                    recipientCode = `RCP_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`;
-                } else {
-                    console.log(chalk.blue('→ Creating Paystack transfer recipient...'));
-                    const recipient = await paystack.createTransferRecipient(
-                        user.bankAccount.accountName || user.fullName,
-                        user.bankAccount.accountNumber,
-                        user.bankAccount.bankCode
-                    );
-                    recipientCode = recipient.data.recipient_code;
-                }
+            const isSandbox = user.bankAccount.bankCode === '001';
+            let payoutData;
 
-                // Save recipient code for future use
-                user.bankAccount.recipientCode = recipientCode;
-                await user.save();
-            }
-
-            let transferData;
-
-            // SIMULATION: If it's a test recipient, simulate a success
-            if (recipientCode.startsWith('RCP_TEST_')) {
-                console.log(chalk.yellow(`ℹ Sandbox: Simulating Paystack transfer of ₦${amountAfterFee}`));
-                transferData = {
+            if (isSandbox) {
+                console.log(chalk.yellow(`ℹ Sandbox: Simulating Korapay payout of ₦${amountAfterFee}`));
+                payoutData = {
                     data: {
-                        transfer_code: `TRF_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`,
-                        reference: `REF_TEST_${Math.random().toString(36).substring(7).toUpperCase()}`,
+                        reference: transaction.reference,
                         status: 'success'
                     }
                 };
             } else {
-                console.log(chalk.blue(`→ Initiating Paystack transfer of ₦${amountAfterFee}...`));
-                transferData = await paystack.initiateTransfer(
-                    amountAfterFee,
-                    recipientCode,
-                    `Withdrawal for ${user.fullName} (${transaction._id})`
-                );
+                console.log(chalk.blue(`→ Initiating Korapay payout of ₦${amountAfterFee}...`));
+                payoutData = await korapay.initiatePayout({
+                    reference: transaction.reference,
+                    amount: amountAfterFee,
+                    bankCode: user.bankAccount.bankCode,
+                    accountNumber: user.bankAccount.accountNumber,
+                    accountName: user.bankAccount.accountName || user.fullName,
+                    email: user.email,
+                    narration: `Withdrawal for ${user.fullName} (${transaction._id})`
+                });
             }
 
-            // Update transaction with Paystack reference
-            transaction.metadata.paystackTransferCode = transferData.data.transfer_code;
-            transaction.metadata.paystackReference = transferData.data.reference;
-            transaction.metadata.paystackStatus = transferData.data.status;
+            // Update transaction with Korapay payout reference
+            transaction.metadata.korapayPayoutReference = payoutData.data.reference;
+            transaction.metadata.korapayStatus = payoutData.data.status;
+            transaction.paymentGateway = 'korapay';
 
-            // Map Paystack status to internal status
-            const paystackStatus = transferData.data.status;
-            if (paystackStatus === 'success' || recipientCode.startsWith('RCP_TEST_')) {
+            const korapayStatus = payoutData.data.status;
+            if (korapayStatus === 'success' || isSandbox) {
                 transaction.status = 'completed';
-            } else if (paystackStatus === 'failed') {
+            } else if (korapayStatus === 'failed') {
                 transaction.status = 'failed';
-                transaction.metadata.paystackError = transferData.message || 'Transfer failed at initiation';
+                transaction.metadata.korapayError = 'Payout failed at initiation';
             } else {
-                // For 'pending', 'processing', or 'queued', we keep it as 'pending'
                 transaction.status = 'pending';
             }
 
+            transaction.markModified('metadata');
             await transaction.save();
 
-            // If it failed immediately, we should refund the user
+            // Auto-refund if payout failed immediately
             if (transaction.status === 'failed') {
-                console.log(chalk.red(`→ Automatic refund: Paystack initiation failed for ${transaction.reference}`));
-                const refundAmount = transaction.metadata.walletDebitAmount || transaction.amount;
+                console.log(chalk.red(`→ Auto refund: Korapay payout failed for ${transaction.reference}`));
+                const refundAmount = transaction.metadata.walletDebitAmount || amount;
                 const MarketWallet = require('../models/MarketWallet');
                 await MarketWallet.findOneAndUpdate(
                     { userId: transaction.userId },
-                    {
-                        $inc: { balance: refundAmount },
-                        $set: { lastTransactionAt: new Date() }
-                    }
+                    { $inc: { balance: refundAmount }, $set: { lastTransactionAt: new Date() } }
                 );
-
-                // Record the reversal transaction
                 const wallet = await MarketWallet.findOne({ userId: transaction.userId });
                 await WalletTransaction.create({
                     userId: transaction.userId,
@@ -583,45 +558,61 @@ class WalletService {
                     balanceBefore: wallet.balance - refundAmount,
                     balanceAfter: wallet.balance,
                     reference: `REV-${transaction.reference}`,
-                    description: `Reversal (Initiation Failed): ${transaction.description}`,
+                    description: `Reversal (Payout Failed): ${transaction.description}`,
                     status: 'completed',
                     paymentGateway: 'system',
-                    metadata: {
-                        originalTransactionId: transaction._id,
-                        reason: 'Paystack initiation failed'
-                    }
+                    metadata: { originalTransactionId: transaction._id, reason: 'Korapay payout failed' }
                 });
             }
 
-            return {
-                transaction,
-                balanceAfter: debitResult.balanceAfter
-            };
-        } catch (error) {
-            console.error(chalk.red('✗ Paystack transfer initiation failed:'), error);
+            // Send emails
+            try {
+                const emailService = require('./email.service');
+                const config = require('../config/config');
+                const feeDetails = {
+                    originalAmount: amount,
+                    feePercentage: (feePercentage * 100).toFixed(1),
+                    feeAmount: feeAmount,
+                    amountAfterFee: amountAfterFee
+                };
 
-            // HYBRID SYSTEM: Instead of auto-refunding, we keep it pending and flag for admin
+                const userHtml = emailService.withdrawalRequested(user.email, user.fullName || 'User', amount, feeDetails);
+                await emailService.sendEmail(user.email, '⏳ Withdrawal Request Received - Sellio Marketplace', userHtml);
+                console.log(chalk.blue(`✓ Withdrawal confirmation email sent to ${user.email}`));
+
+                if (config.ADMIN_EMAIL) {
+                    const adminHtml = emailService.adminWithdrawalAlert(user.fullName || 'User', user.email, user.role, amount, feeDetails);
+                    await emailService.sendEmail(config.ADMIN_EMAIL, `🔔 New Withdrawal Request - ${user.fullName || user.email}`, adminHtml);
+                    console.log(chalk.blue(`✓ Admin notified of withdrawal from ${user.email}`));
+                }
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send withdrawal emails: ${emailError.message}`));
+            }
+
+            return { transaction, balanceAfter: debitResult.balanceAfter };
+
+        } catch (error) {
+            console.error(chalk.red('✗ Korapay payout initiation failed:'), error);
+
             if (transaction) {
                 transaction.status = 'pending';
-                transaction.metadata.paystackError = error.message || 'Transfer initiation failed';
+                transaction.metadata.korapayError = error.message || 'Payout initiation failed';
                 transaction.metadata.requiresManualAction = true;
                 transaction.metadata.failedAt = new Date();
+                transaction.markModified('metadata');
                 await transaction.save();
 
-                console.log(chalk.yellow(`⚠ Withdrawal ${transaction.reference} queued for manual admin review due to Paystack failure.`));
+                console.log(chalk.yellow(`⚠ Withdrawal ${transaction.reference} queued for manual admin review.`));
 
                 return {
                     transaction,
                     balanceAfter: debitResult.balanceAfter,
                     requiresManualAction: true,
-                    message: 'Automated transfer failed, but request is queued for manual processing.'
+                    message: 'Automated payout failed, request queued for manual processing.'
                 };
             }
 
-            throw {
-                status: 500,
-                message: `Failed to initiate transfer: ${error.message || 'Unknown error'}`
-            };
+            throw { status: 500, message: `Failed to initiate payout: ${error.message || 'Unknown error'}` };
         }
     }
 
@@ -727,18 +718,18 @@ class WalletService {
     }
 
     /**
-     * Reconcile pending withdrawals with Paystack
-     * Checks all pending withdrawals and updates status based on Paystack response
+     * Reconcile pending withdrawals with Korapay
+     * Checks all pending withdrawals and updates status based on Korapay response
      */
     async reconcilePendingWithdrawals() {
-        const paystack = require('../utils/paystack');
+        const korapay = require('../utils/korapay');
         const notificationService = require('./notification.service');
 
-        // Find all pending withdrawal transactions that have a Paystack transfer code
+        // Find all pending withdrawal transactions that have a Korapay payout reference
         const pendingWithdrawals = await WalletTransaction.find({
             type: 'withdrawal',
             status: 'pending',
-            'metadata.paystackTransferCode': { $exists: true, $ne: null }
+            'metadata.korapayPayoutReference': { $exists: true, $ne: null }
         });
 
         console.log(chalk.blue(`Found ${pendingWithdrawals.length} pending withdrawals to reconcile...`));
@@ -753,67 +744,55 @@ class WalletService {
 
         for (const transaction of pendingWithdrawals) {
             try {
-                const transferCode = transaction.metadata.paystackTransferCode;
-                
-                // Skip test transfers (they're already handled)
-                if (transferCode.startsWith('TRF_TEST_')) {
-                    continue;
-                }
+                const payoutRef = transaction.metadata.korapayPayoutReference;
+                console.log(chalk.blue(`→ Checking payout ${payoutRef} for transaction ${transaction.reference}...`));
 
-                console.log(chalk.blue(`→ Checking transfer ${transferCode} for transaction ${transaction.reference}...`));
+                const korapayResponse = await korapay.verifyPayout(payoutRef);
+                const korapayStatus = korapayResponse.data.status;
 
-                // Verify transfer status with Paystack
-                const paystackResponse = await paystack.verifyTransfer(transferCode);
-                const paystackStatus = paystackResponse.data.status;
+                console.log(chalk.yellow(`  Korapay status for ${payoutRef}: ${korapayStatus}`));
 
-                console.log(chalk.yellow(`  Paystack status for ${transferCode}: ${paystackStatus}`));
+                const getFeeDetails = (t) => {
+                    const m = t.metadata || {};
+                    return {
+                        originalAmount: m.originalAmount || m.walletDebitAmount || t.amount,
+                        feePercentage: m.feePercentage || 0,
+                        feeAmount: m.feeAmount || 0,
+                        amountAfterFee: m.amountAfterFee || t.amount
+                    };
+                };
 
-                if (paystackStatus === 'success') {
-                    // Transfer completed on Paystack - mark as completed
+                if (korapayStatus === 'success') {
                     transaction.status = 'completed';
-                    transaction.metadata.paystackStatus = paystackStatus;
+                    transaction.metadata.korapayStatus = korapayStatus;
                     transaction.metadata.reconciledAt = new Date();
+                    transaction.markModified('metadata');
                     await transaction.save();
 
-                    // Notify user
                     const user = await MarketUser.findById(transaction.userId);
                     if (user) {
-                        const m = transaction.metadata || {};
-                        const oldM = m.metadata || {};
-                        const feeDetails = {
-                            originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
-                            feePercentage: m.feePercentage || oldM.feePercentage || 0,
-                            feeAmount: m.feeAmount || oldM.feeAmount || 0,
-                            amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
-                        };
-                        await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'approved', null, feeDetails);
+                        await notificationService.notifyWithdrawalStatus(user, getFeeDetails(transaction).amountAfterFee, 'approved', null, getFeeDetails(transaction));
                     }
 
                     results.completed++;
                     console.log(chalk.green(`  ✓ Transaction ${transaction.reference} marked as completed`));
 
-                } else if (paystackStatus === 'failed') {
-                    // Transfer failed - mark as failed and refund
+                } else if (korapayStatus === 'failed') {
                     transaction.status = 'failed';
-                    transaction.metadata.paystackStatus = paystackStatus;
-                    transaction.metadata.paystackError = paystackResponse.message || 'Transfer failed';
+                    transaction.metadata.korapayStatus = korapayStatus;
+                    transaction.metadata.korapayError = 'Payout failed';
                     transaction.metadata.reconciledAt = new Date();
+                    transaction.markModified('metadata');
                     await transaction.save();
 
-                    // Refund the FULL amount that was debited from the wallet
                     const m = transaction.metadata || {};
-                    const oldM = m.metadata || {};
-                    const refundAmount = m.walletDebitAmount || oldM.originalAmount || transaction.amount;
+                    const refundAmount = m.walletDebitAmount || m.originalAmount || transaction.amount;
                     const MarketWallet = require('../models/MarketWallet');
                     await MarketWallet.findOneAndUpdate(
                         { userId: transaction.userId },
-                        {
-                            $inc: { balance: refundAmount },
-                            $set: { lastTransactionAt: new Date() }
-                        }
+                        { $inc: { balance: refundAmount }, $set: { lastTransactionAt: new Date() } }
                     );
 
-                    // Record reversal transaction
                     const wallet = await MarketWallet.findOne({ userId: transaction.userId });
                     await WalletTransaction.create({
                         userId: transaction.userId,
@@ -822,37 +801,23 @@ class WalletService {
                         balanceBefore: wallet.balance - refundAmount,
                         balanceAfter: wallet.balance,
                         reference: `REV-${transaction.reference}`,
-                        description: `Reversal (Transfer Failed): ${transaction.description}`,
+                        description: `Reversal (Payout Failed): ${transaction.description}`,
                         status: 'completed',
                         paymentGateway: 'system',
-                        metadata: {
-                            originalTransactionId: transaction._id,
-                            reason: 'Paystack transfer failed',
-                            paystackTransferCode: transferCode
-                        }
+                        metadata: { originalTransactionId: transaction._id, reason: 'Korapay payout failed', korapayPayoutReference: payoutRef }
                     });
 
-                    // Notify user
                     const user = await MarketUser.findById(transaction.userId);
                     if (user) {
-                        const m = transaction.metadata || {};
-                        const oldM = m.metadata || {};
-                        const feeDetails = {
-                            originalAmount: m.originalAmount || oldM.originalAmount || m.walletDebitAmount || transaction.amount,
-                            feePercentage: m.feePercentage || oldM.feePercentage || 0,
-                            feeAmount: m.feeAmount || oldM.feeAmount || 0,
-                            amountAfterFee: m.amountAfterFee || oldM.amountAfterFee || transaction.amount
-                        };
-                        await notificationService.notifyWithdrawalStatus(user, feeDetails.amountAfterFee, 'rejected', 'Transfer failed - funds refunded', feeDetails);
+                        await notificationService.notifyWithdrawalStatus(user, getFeeDetails(transaction).amountAfterFee, 'rejected', 'Payout failed - funds refunded', getFeeDetails(transaction));
                     }
 
                     results.failed++;
-                    console.log(chalk.red(`  ✗ Transaction ${transaction.reference} marked as failed and refunded`));
+                    console.log(chalk.red(`  ✗ Transaction ${transaction.reference} failed and refunded`));
 
                 } else {
-                    // Still pending/processing/queued
                     results.stillPending++;
-                    console.log(chalk.yellow(`  ⏳ Transaction ${transaction.reference} still ${paystackStatus}`));
+                    console.log(chalk.yellow(`  ⏳ Transaction ${transaction.reference} still ${korapayStatus}`));
                 }
 
             } catch (error) {

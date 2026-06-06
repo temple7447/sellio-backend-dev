@@ -1086,18 +1086,18 @@ class AuthService {
                 };
             }
 
-            // SIMULATION: If bankCode is 001 (Test Bank), skip Paystack verification
+            // SIMULATION: If bankCode is 001 (Test Bank), skip Korapay verification
             if (bankData.bankCode !== '001') {
                 try {
-                    const paystack = require('../utils/paystack');
+                    const korapay = require('../utils/korapay');
                     console.log(chalk.blue(`→ Verifying account ${bankData.accountNumber} with bank ${bankData.bankCode}...`));
-                    const verification = await paystack.verifyAccountNumber(bankData.accountNumber, bankData.bankCode);
+                    const verification = await korapay.verifyAccount(bankData.accountNumber, bankData.bankCode);
 
                     if (!verification.status) {
                         throw { status: 400, message: verification.message || 'Account verification failed' };
                     }
 
-                    // Update account name with the one resolved from Paystack for consistency
+                    // Update account name with the one resolved from Korapay for consistency
                     bankData.accountName = verification.data.account_name;
                     console.log(chalk.green(`✓ Account resolved: ${bankData.accountName}`));
                 } catch (error) {
