@@ -63,12 +63,8 @@ class OrderService {
             });
         }
 
-        // Calculate totals with dynamic fee structure from settings
-        const settings = await RewardSettings.getSettings();
-        const tax = settings.checkoutFees?.tax || 250;
-        const escrowProtection = subtotal * (settings.checkoutFees?.escrowProtectionRate || 0.025);
-        const service = settings.checkoutFees?.serviceFee || 50;
-        const final = subtotal + tax + escrowProtection + service;
+        // Platform fee is already baked into product prices — total equals subtotal
+        const final = subtotal;
 
         // Create order with guest information
         const order = new MarketOrder({
@@ -83,9 +79,9 @@ class OrderService {
             },
             totals: {
                 subtotal,
-                tax,
-                escrowProtection,
-                service,
+                tax: 0,
+                escrowProtection: 0,
+                service: 0,
                 final
             }
         });
@@ -176,12 +172,8 @@ class OrderService {
                 });
             }
 
-            // Calculate totals with dynamic fee structure from settings
-            const settings = await RewardSettings.getSettings();
-            const tax = settings.checkoutFees?.tax || 250;
-            const escrowProtection = subtotal * (settings.checkoutFees?.escrowProtectionRate || 0.025);
-            const service = settings.checkoutFees?.serviceFee || 50;
-            const final = subtotal + tax + escrowProtection + service;
+            // Platform fee is already baked into product prices — total equals subtotal
+            const final = subtotal;
 
             // Create order
             const order = new MarketOrder({
@@ -201,9 +193,9 @@ class OrderService {
                 },
                 totals: {
                     subtotal,
-                    tax,
-                    escrowProtection,
-                    service,
+                    tax: 0,
+                    escrowProtection: 0,
+                    service: 0,
                     final
                 }
             });
