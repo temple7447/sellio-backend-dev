@@ -1872,6 +1872,53 @@ class OrderService {
             console.error(chalk.yellow('⚠ Failed to send order receipt email:', error.message));
         }
 
+        // Notify each seller of the new confirmed order
+        try {
+            const emailService = require('./email.service');
+            const sellerItems = await MarketOrderItem.find({ orderId: order._id })
+                .populate('productId', 'name sku')
+                .populate('sellerId', 'email fullName businessName')
+                .lean();
+
+            const sellerMap = new Map();
+            for (const item of sellerItems) {
+                const seller = item.sellerId;
+                if (!seller) continue;
+                const key = seller._id.toString();
+                if (!sellerMap.has(key)) sellerMap.set(key, { seller, items: [] });
+                sellerMap.get(key).items.push({
+                    productName: item.productId?.name || 'Product',
+                    sku: item.productId?.sku || null,
+                    quantity: item.quantity,
+                    price: item.price
+                });
+            }
+
+            const buyerName = order.customerId
+                ? (await require('../models/MarketUser').MarketUser.findById(order.customerId).select('fullName').lean())?.fullName || 'A customer'
+                : order.shipping?.address?.name || 'A customer';
+
+            for (const { seller, items } of sellerMap.values()) {
+                try {
+                    const sellerSubtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+                    const sellerHtml = emailService.sellerNewOrder(
+                        seller.email,
+                        seller.businessName || seller.fullName || 'Seller',
+                        order._id.toString(),
+                        items,
+                        sellerSubtotal,
+                        buyerName
+                    );
+                    await emailService.sendEmail(seller.email, `🎉 New Order Confirmed - Order ${order._id}`, sellerHtml);
+                    console.log(chalk.blue(`✓ Seller ${seller.email} notified of new order`));
+                } catch (err) {
+                    console.log(chalk.yellow(`⚠ Failed to notify seller ${seller.email}: ${err.message}`));
+                }
+            }
+        } catch (sellerEmailError) {
+            console.log(chalk.yellow(`⚠ Failed to send seller notifications: ${sellerEmailError.message}`));
+        }
+
         // Calculate and credit cashback based on configurable settings
         try {
             const walletService = require('./wallet.service');
