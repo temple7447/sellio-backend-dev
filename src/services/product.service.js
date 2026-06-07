@@ -507,6 +507,58 @@ class ProductService {
         return updatedProduct;
     }
 
+    async migrateProductPrices() {
+        // Find all products where sellerPrice has never been set (pre-fee-system products)
+        const legacy = await MarketProduct.find({
+            'price.sellerPrice': { $exists: false },
+            status: { $in: ['active', 'inactive', 'draft'] }
+        }).lean();
+
+        if (legacy.length === 0) {
+            return { updated: 0, skipped: 0, errors: 0, total: 0, details: [] };
+        }
+
+        let updated = 0, skipped = 0, errors = 0;
+        const details = [];
+
+        for (const product of legacy) {
+            try {
+                const originalPrice = product.price?.current;
+                if (!originalPrice || originalPrice <= 0) {
+                    skipped++;
+                    continue;
+                }
+
+                const feeResult = await applyPlatformFee(originalPrice);
+
+                await MarketProduct.updateOne(
+                    { _id: product._id },
+                    {
+                        $set: {
+                            'price.current': feeResult.buyerPrice,
+                            'price.sellerPrice': feeResult.sellerPrice,
+                        }
+                    }
+                );
+
+                details.push({
+                    productId: product._id,
+                    name: product.name,
+                    sellerPrice: feeResult.sellerPrice,
+                    buyerPrice: feeResult.buyerPrice,
+                    feePercent: feeResult.feePercent,
+                    feeAmount: feeResult.feeAmount,
+                });
+                updated++;
+            } catch (err) {
+                errors++;
+                console.error(`Migration failed for product ${product._id}:`, err.message);
+            }
+        }
+
+        return { updated, skipped, errors, total: legacy.length, details };
+    }
+
     async deleteProduct(productId, sellerId) {
         try {
             // Check for valid MongoDB ObjectId

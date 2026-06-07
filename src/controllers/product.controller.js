@@ -247,6 +247,23 @@ class ProductController {
             });
         }
     }
+    async migrateProductPrices(req, res) {
+        try {
+            const result = await productService.migrateProductPrices();
+            console.log(chalk.green(`✓ Price migration complete: ${result.updated} updated, ${result.skipped} skipped, ${result.errors} errors`));
+            res.json({
+                success: true,
+                message: `Migration complete: ${result.updated} products updated, ${result.skipped} skipped, ${result.errors} errors.`,
+                data: result
+            });
+        } catch (error) {
+            console.error(chalk.red('✗ Price migration failed:', error));
+            res.status(error.status || 500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
 }
 
 module.exports = new ProductController();

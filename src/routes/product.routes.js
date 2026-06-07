@@ -55,6 +55,7 @@ router.get('/admin/active', auth, isAdmin, productController.getActiveAdminProdu
 router.delete('/admin/:id', auth, isAdmin, productController.adminDeleteProduct);
 router.patch('/admin/:id/status', auth, isAdmin, productController.adminUpdateProductStatus);
 router.put('/admin/:id', auth, isAdmin, productController.adminUpdateProduct);
+router.post('/admin/migrate-prices', auth, isAdmin, productController.migrateProductPrices);
 
 
 // Product operations
