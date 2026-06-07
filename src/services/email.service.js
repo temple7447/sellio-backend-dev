@@ -1,31 +1,25 @@
 const nodemailer = require('nodemailer');
-require('dotenv').config();
+const { MailtrapTransport } = require('mailtrap');
+const config = require('../config/config');
 
 class EmailService {
     constructor() {
-        // Initialize Mailtrap or your email service
-        this.transporter = nodemailer.createTransport({
-            host: process.env.MAILTRAP_HOST || 'smtp.mailtrap.io',
-            port: process.env.MAILTRAP_PORT || 465,
-            secure: true,
-            auth: {
-                user: process.env.MAILTRAP_USER,
-                pass: process.env.MAILTRAP_PASSWORD
-            }
-        });
+        this.transporter = nodemailer.createTransport(
+            MailtrapTransport({ token: config.MAILTRAP_TOKEN })
+        );
     }
 
-    /**
-     * Send email with template
-     */
     async sendEmail(to, subject, htmlContent) {
         try {
             const mailOptions = {
-                from: process.env.EMAIL_FROM || 'noreply@campustrade.com',
-                to,
+                from: {
+                    address: config.MAILTRAP_SENDER_EMAIL,
+                    name: config.MAILTRAP_SENDER_NAME
+                },
+                to: [to],
                 subject,
                 html: htmlContent,
-                text: htmlContent.replace(/<[^>]*>/g, '') // Strip HTML for text version
+                text: htmlContent.replace(/<[^>]*>/g, '')
             };
 
             const result = await this.transporter.sendMail(mailOptions);
