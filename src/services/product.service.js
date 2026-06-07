@@ -518,6 +518,19 @@ class ProductService {
             return { updated: 0, skipped: 0, errors: 0, total: 0, details: [] };
         }
 
+        // Fetch settings once for all products instead of once per product
+        const settings = await RewardSettings.getSettings();
+        const tiers = settings.pricingFees || [];
+
+        const applyFee = (sellerPrice) => {
+            const tier = tiers.find(
+                (t) => sellerPrice >= t.minPrice && (t.maxPrice == null || sellerPrice <= t.maxPrice)
+            );
+            if (!tier) return { buyerPrice: sellerPrice, sellerPrice, feePercent: 0, feeAmount: 0 };
+            const feeAmount = Math.round(sellerPrice * (tier.feePercent / 100));
+            return { buyerPrice: sellerPrice + feeAmount, sellerPrice, feePercent: tier.feePercent, feeAmount };
+        };
+
         let updated = 0, skipped = 0, errors = 0;
         const details = [];
 
@@ -529,7 +542,7 @@ class ProductService {
                     continue;
                 }
 
-                const feeResult = await applyPlatformFee(originalPrice);
+                const feeResult = applyFee(originalPrice);
 
                 await MarketProduct.updateOne(
                     { _id: product._id },
