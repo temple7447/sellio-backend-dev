@@ -604,6 +604,30 @@ class WalletService {
 
                 console.log(chalk.yellow(`⚠ Withdrawal ${transaction.reference} queued for manual admin review.`));
 
+                // Notify user and admin since payout failed and requires manual processing
+                try {
+                    const emailService = require('./email.service');
+                    const config = require('../config/config');
+                    const feeDetails = {
+                        originalAmount: amount,
+                        feePercentage: (feePercentage * 100).toFixed(1),
+                        feeAmount: feeAmount,
+                        amountAfterFee: amountAfterFee
+                    };
+
+                    const userHtml = emailService.withdrawalRequested(user.email, user.fullName || 'User', amount, feeDetails);
+                    await emailService.sendEmail(user.email, '⏳ Withdrawal Request Received - Sellio Marketplace', userHtml);
+                    console.log(chalk.blue(`✓ Withdrawal confirmation email sent to ${user.email}`));
+
+                    if (config.ADMIN_EMAIL) {
+                        const adminHtml = emailService.adminWithdrawalAlert(user.fullName || 'User', user.email, user.role, amount, feeDetails);
+                        await emailService.sendEmail(config.ADMIN_EMAIL, `🔔 New Withdrawal Request (Manual) - ${user.fullName || user.email}`, adminHtml);
+                        console.log(chalk.blue(`✓ Admin notified of manual withdrawal from ${user.email}`));
+                    }
+                } catch (emailError) {
+                    console.log(chalk.yellow(`⚠ Failed to send withdrawal emails: ${emailError.message}`));
+                }
+
                 return {
                     transaction,
                     balanceAfter: debitResult.balanceAfter,
