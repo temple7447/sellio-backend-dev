@@ -691,51 +691,50 @@ class WalletService {
             transaction.markModified('metadata');
             await transaction.save();
 
-            // Notify user
-            const user = await MarketUser.findById(transaction.userId);
-            if (user) {
-                await notificationService.notifyWithdrawalStatus(user, feeDetails.originalAmount, 'rejected', reason, feeDetails);
+            // Determine refund amount — use every available fallback to ensure we always get a number
+            const meta = transaction.metadata || {};
+            const refundAmount = meta.walletDebitAmount
+                || meta.originalAmount
+                || feeDetails.originalAmount
+                || transaction.amount;
+
+            if (!refundAmount || refundAmount <= 0) {
+                throw { status: 500, message: 'Could not determine refund amount for this withdrawal' };
             }
 
-            // Perform the refund - refund the FULL amount that was debited from the wallet
-            const m = transaction.metadata || {};
-            const oldM = m.metadata || {};
-            const refundAmount = m.walletDebitAmount || oldM.originalAmount || transaction.amount;
-            console.log(chalk.red(`→ Refunding ₦${refundAmount} to user ${transaction.userId} due to manual decline`));
+            console.log(chalk.blue(`→ Refunding ₦${refundAmount} to user ${transaction.userId} due to admin decline`));
 
-            const MarketWallet = require('../models/MarketWallet');
-            await MarketWallet.findOneAndUpdate(
-                { userId: transaction.userId },
+            // Credit wallet using the standard credit method for consistency and proper logging
+            const creditResult = await this.credit(
+                transaction.userId,
+                refundAmount,
+                `Refund: declined withdrawal ${transaction.reference}`,
                 {
-                    $inc: { balance: refundAmount },
-                    $set: { lastTransactionAt: new Date() }
+                    type: 'refund',
+                    reference: `REV-${transaction.reference}`,
+                    paymentGateway: 'system',
+                    metadata: {
+                        originalTransactionId: transaction._id,
+                        reason: reason || 'Declined by admin'
+                    }
                 }
             );
 
-            // Record a reversal transaction for clarity
-            const reversal = await WalletTransaction.create({
-                userId: transaction.userId,
-                type: 'deposit',
-                amount: refundAmount,
-                balanceBefore: 0,
-                balanceAfter: 0,
-                reference: `REV-${transaction.reference}`,
-                description: `Reversal: ${transaction.description}`,
-                status: 'completed',
-                paymentGateway: 'system',
-                metadata: {
-                    originalTransactionId: transaction._id,
-                    reason: reason || 'Manual decline by admin'
-                }
-            });
+            console.log(chalk.green(`✓ Refund of ₦${refundAmount} credited. New balance: ₦${creditResult.balanceAfter}`));
 
-            // Refresh balance after in reversal
-            const wallet = await MarketWallet.findOne({ userId: transaction.userId });
-            reversal.balanceAfter = wallet.balance;
-            reversal.balanceBefore = wallet.balance - refundAmount;
-            await reversal.save();
+            // Notify user after refund is confirmed
+            const user = await MarketUser.findById(transaction.userId);
+            if (user) {
+                await notificationService.notifyWithdrawalStatus(user, refundAmount, 'rejected', reason, feeDetails);
+            }
 
-            return { success: true, transaction, reversal, feeDetails, refundAmount };
+            return {
+                success: true,
+                transaction,
+                feeDetails,
+                refundAmount,
+                newBalance: creditResult.balanceAfter
+            };
         }
 
         throw { status: 400, message: 'Invalid status for manual processing. Use "completed" or "failed".' };

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(rm -rf /private/tmp/claude-501 && echo \"cleared\")"
+    ]
+  }
+}

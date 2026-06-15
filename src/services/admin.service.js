@@ -132,6 +132,15 @@ class AdminService {
         seller.trustedBadgeAwardedAt = isTrusted ? new Date() : null;
         await seller.save();
 
+        try {
+            const emailService = require('./email.service');
+            const html = emailService.trustedBadgeUpdate(seller.email, seller.businessName || seller.fullName || 'Seller', isTrusted);
+            const subject = isTrusted ? '🏅 You\'ve Been Awarded a Trusted Badge - Sellio' : '⚠ Trusted Badge Removed - Sellio';
+            await emailService.sendEmail(seller.email, subject, html);
+        } catch (emailError) {
+            console.error('Failed to send trusted badge email:', emailError.message);
+        }
+
         return {
             message: isTrusted ? 'Seller awarded trusted badge' : 'Trusted badge removed from seller',
             seller: {
@@ -183,6 +192,15 @@ class AdminService {
             anonymizedData['bankAccount.accountName'] = null;
         }
 
+        // Email user before anonymizing their address
+        try {
+            const emailService = require('./email.service');
+            const html = emailService.accountDeleted(user.email, user.fullName || 'User', reason);
+            await emailService.sendEmail(user.email, 'Your Sellio Account Has Been Deleted', html);
+        } catch (emailError) {
+            console.error('Failed to send account deletion email:', emailError.message);
+        }
+
         // Update user with anonymized data
         await MarketUser.findByIdAndUpdate(userId, anonymizedData);
 
@@ -217,6 +235,17 @@ class AdminService {
 
             product.status = status;
             await product.save();
+
+            try {
+                const emailService = require('./email.service');
+                const seller = product.sellerId;
+                if (seller?.email) {
+                    const html = emailService.productStatusChanged(seller.email, seller.businessName || seller.email, product.name, status);
+                    await emailService.sendEmail(seller.email, `Product Status Update: ${product.name} - Sellio`, html);
+                }
+            } catch (emailError) {
+                console.error('Failed to send product status email:', emailError.message);
+            }
 
             return {
                 id: product._id,
@@ -266,6 +295,18 @@ class AdminService {
                 sellerId: product.sellerId,
                 deletedAt: new Date()
             };
+
+            // Notify seller before deletion
+            try {
+                const emailService = require('./email.service');
+                const seller = await MarketUser.findById(product.sellerId).select('email fullName businessName').lean();
+                if (seller?.email) {
+                    const html = emailService.productDeleted(seller.email, seller.businessName || seller.fullName || 'Seller', product.name);
+                    await emailService.sendEmail(seller.email, `Your Product Has Been Removed - Sellio`, html);
+                }
+            } catch (emailError) {
+                console.error('Failed to send product deletion email:', emailError.message);
+            }
 
             // Delete the product
             await MarketProduct.deleteOne({ _id: productId });

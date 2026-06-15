@@ -553,6 +553,117 @@ class EmailService {
 
         return html;
     }
+
+    paymentProofRejected(userEmail, userName, orderId, reason = '') {
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #f44336;">⚠ Payment Proof Rejected</h1>
+                <p>Hi ${userName},</p>
+                <p>Your payment proof for order <strong>#${orderId}</strong> could not be verified and has been rejected.</p>
+                <div style="background: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 15px 0;">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+                    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                </div>
+                <p>Please log in and upload a valid payment proof to proceed with your order.</p>
+                <p style="text-align: center; margin: 20px 0;">
+                    <a href="${process.env.FRONTEND_URL}/orders/${orderId}"
+                       style="background: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                        Upload New Proof
+                    </a>
+                </p>
+            </div>
+        `;
+    }
+
+    orderItemCancelled(recipientEmail, recipientName, orderId, productName, reason, cancelledBy) {
+        const isSeller = cancelledBy === 'customer';
+        const color = '#ff9800';
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: ${color};">Order Item Cancelled</h1>
+                <p>Hi ${recipientName},</p>
+                <p>An item in order <strong>#${orderId}</strong> has been cancelled by the ${cancelledBy}.</p>
+                <div style="background: #fff3e0; border-left: 4px solid ${color}; padding: 15px; margin: 15px 0;">
+                    <p><strong>Item:</strong> ${productName}</p>
+                    <p><strong>Cancelled By:</strong> ${cancelledBy}</p>
+                    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+                    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                </div>
+                ${isSeller ? '<p>The refund for this item has been credited to the buyer\'s wallet.</p>' : '<p>Your refund has been credited to your wallet.</p>'}
+            </div>
+        `;
+    }
+
+    trustedBadgeUpdate(sellerEmail, sellerName, isAwarded) {
+        const color = isAwarded ? '#4caf50' : '#f44336';
+        const icon = isAwarded ? '🏅' : '⚠';
+        const title = isAwarded ? 'You\'ve Been Awarded a Trusted Badge!' : 'Trusted Badge Removed';
+        const body = isAwarded
+            ? 'Congratulations! Your store has been verified and awarded a Trusted Seller badge. This will be displayed on your store and products to build buyer confidence.'
+            : 'Your Trusted Seller badge has been removed by our admin team. Please contact support if you have any questions.';
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: ${color};">${icon} ${title}</h1>
+                <p>Hi ${sellerName},</p>
+                <p>${body}</p>
+                <p style="color: #666; font-size: 12px;">If you believe this is a mistake, please contact our support team.</p>
+            </div>
+        `;
+    }
+
+    productStatusChanged(sellerEmail, sellerName, productName, status, reason = '') {
+        const statusConfig = {
+            active:   { color: '#4caf50', icon: '✅', msg: 'Your product is now live and visible to buyers.' },
+            inactive: { color: '#ff9800', icon: '⏸',  msg: 'Your product has been set to inactive and is no longer visible to buyers.' },
+            banned:   { color: '#f44336', icon: '🚫', msg: 'Your product has been banned and removed from the marketplace.' },
+            draft:    { color: '#9e9e9e', icon: '📝', msg: 'Your product has been moved to draft status.' }
+        };
+        const cfg = statusConfig[status] || statusConfig.inactive;
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: ${cfg.color};">${cfg.icon} Product Status Update</h1>
+                <p>Hi ${sellerName},</p>
+                <p>${cfg.msg}</p>
+                <div style="background: #f5f5f5; border-left: 4px solid ${cfg.color}; padding: 15px; margin: 15px 0;">
+                    <p><strong>Product:</strong> ${productName}</p>
+                    <p><strong>New Status:</strong> ${status.toUpperCase()}</p>
+                    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+                    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                </div>
+                <p style="color: #666; font-size: 12px;">Contact support if you have any questions.</p>
+            </div>
+        `;
+    }
+
+    productDeleted(sellerEmail, sellerName, productName, reason = '') {
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #f44336;">🗑 Product Removed</h1>
+                <p>Hi ${sellerName},</p>
+                <p>Your product has been removed from the Sellio marketplace by our admin team.</p>
+                <div style="background: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 15px 0;">
+                    <p><strong>Product:</strong> ${productName}</p>
+                    ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+                    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                </div>
+                <p style="color: #666; font-size: 12px;">If you believe this is a mistake, please contact our support team.</p>
+            </div>
+        `;
+    }
+
+    accountDeleted(userEmail, userName, reason = '') {
+        return `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #f44336;">Account Deleted</h1>
+                <p>Hi ${userName},</p>
+                <p>Your Sellio account has been deleted by our admin team.</p>
+                ${reason ? `<div style="background: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 15px 0;"><p><strong>Reason:</strong> ${reason}</p></div>` : ''}
+                <p>All your personal data has been removed from our platform.</p>
+                <p style="color: #666; font-size: 12px;">If you believe this is a mistake, please contact our support team immediately.</p>
+            </div>
+        `;
+    }
 }
 
 module.exports = new EmailService();

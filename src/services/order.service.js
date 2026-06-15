@@ -1289,6 +1289,26 @@ class OrderService {
             order.payment.transferredAmount = null;
             await order.save();
 
+            // Notify customer that their payment proof was rejected
+            try {
+                const emailService = require('./email.service');
+                let buyerEmail, buyerName;
+                if (customer) {
+                    buyerEmail = customer.email;
+                    buyerName = customer.fullName || 'Customer';
+                } else {
+                    buyerEmail = order.guestEmail || order.shipping?.address?.email;
+                    buyerName = order.shipping?.address?.name || 'Customer';
+                }
+                if (buyerEmail) {
+                    const html = emailService.paymentProofRejected(buyerEmail, buyerName, order._id.toString());
+                    await emailService.sendEmail(buyerEmail, '⚠ Payment Proof Rejected - Action Required', html);
+                    console.log(chalk.blue(`✓ Payment rejection email sent to ${buyerEmail}`));
+                }
+            } catch (emailError) {
+                console.log(chalk.yellow(`⚠ Failed to send payment rejection email: ${emailError.message}`));
+            }
+
             return {
                 success: true,
                 message: 'Payment rejected. Customer needs to upload a new payment proof.',
@@ -2140,6 +2160,41 @@ class OrderService {
         }
 
         console.log(chalk.green(`✓ Item ${item._id} cancelled by ${role}. Reason: ${reason}`));
+
+        // Notify the other party about the cancellation
+        try {
+            const emailService = require('./email.service');
+            const productDoc = await MarketProduct.findById(item.productId).select('name').lean();
+            const productName = productDoc?.name || 'Product';
+
+            if (role === 'customer') {
+                // Notify seller
+                const seller = await MarketUser.findById(item.sellerId).select('email fullName businessName').lean();
+                if (seller?.email) {
+                    const html = emailService.orderItemCancelled(seller.email, seller.businessName || seller.fullName || 'Seller', order._id.toString(), productName, reason, 'customer');
+                    await emailService.sendEmail(seller.email, `Order Item Cancelled - Order #${order._id}`, html);
+                    console.log(chalk.blue(`✓ Seller ${seller.email} notified of item cancellation`));
+                }
+            } else if (role === 'seller') {
+                // Notify buyer
+                let buyerEmail, buyerName;
+                if (order.customerId) {
+                    const buyer = await MarketUser.findById(order.customerId).select('email fullName').lean();
+                    buyerEmail = buyer?.email;
+                    buyerName = buyer?.fullName || 'Customer';
+                } else {
+                    buyerEmail = order.guestEmail || order.shipping?.address?.email;
+                    buyerName = order.shipping?.address?.name || 'Customer';
+                }
+                if (buyerEmail) {
+                    const html = emailService.orderItemCancelled(buyerEmail, buyerName, order._id.toString(), productName, reason, 'seller');
+                    await emailService.sendEmail(buyerEmail, `Order Item Cancelled - Order #${order._id}`, html);
+                    console.log(chalk.blue(`✓ Buyer ${buyerEmail} notified of item cancellation`));
+                }
+            }
+        } catch (emailError) {
+            console.log(chalk.yellow(`⚠ Failed to send cancellation notification: ${emailError.message}`));
+        }
 
         return {
             success: true,
