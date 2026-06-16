@@ -22,6 +22,26 @@ const auth = async (req, res, next) => {
     }
 };
 
+// Like `auth`, but never rejects: attaches req.user when a valid token is
+// present, otherwise continues anonymously. For public endpoints that tailor
+// their response to a logged-in viewer (e.g. "did I mark this helpful?").
+const optionalAuth = async (req, res, next) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        if (token) {
+            const decoded = jwt.verify(token, config.JWT_SECRET);
+            const user = await MarketUser.findById(decoded.id);
+            if (user) {
+                req.user = user;
+                req.token = token;
+            }
+        }
+    } catch (error) {
+        // Ignore bad/expired tokens — treat as anonymous.
+    }
+    next();
+};
+
 const isVerified = async (req, res, next) => {
     if (!req.user.isVerified) {
         return res.status(403).json({ message: 'Please verify your account first.' });
@@ -66,4 +86,4 @@ const isStaff = async (req, res, next) => {
     next();
 };
 
-module.exports = { auth, isVerified, isSeller, isAdmin, isAdminVerified, isCustomer, isStaff };
+module.exports = { auth, optionalAuth, isVerified, isSeller, isAdmin, isAdminVerified, isCustomer, isStaff };

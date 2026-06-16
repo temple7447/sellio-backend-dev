@@ -34,6 +34,56 @@ class ProductController {
         }
     }
 
+    async getDeals(req, res) {
+        try {
+            const result = await productService.getDeals(req.query);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Deals fetch failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async getSearchSuggestions(req, res) {
+        try {
+            const result = await productService.getSearchSuggestions(req.query);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Search suggestions failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async recordProductView(req, res) {
+        try {
+            await productService.recordProductView(req.user._id, req.params.productId);
+            res.json({ success: true });
+        } catch (error) {
+            console.error(chalk.red('✗ Record view failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async getRecentlyViewed(req, res) {
+        try {
+            const result = await productService.getRecentlyViewed(req.user._id, req.query);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ Recently viewed fetch failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    async getForYou(req, res) {
+        try {
+            const result = await productService.getForYou(req.user._id, req.query);
+            res.json(result);
+        } catch (error) {
+            console.error(chalk.red('✗ For-you fetch failed:', error));
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     async getAdminProducts(req, res) {
         try {
             const result = await adminService.getAdminProducts(req.query);

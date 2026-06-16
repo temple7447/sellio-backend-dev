@@ -4,6 +4,8 @@ const { MarketUser } = require('../models/MarketUser');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const mongoose = require('mongoose');
 const MarketOrder = require('../models/MarketOrder');
+const MarketRecentlyViewed = require('../models/MarketRecentlyViewed');
+const MarketOrderItem = require('../models/MarketOrderItem');
 const discordLogger = require('../utils/discordLogger');
 const RewardSettings = require('../models/RewardSettings');
 
@@ -995,6 +997,11 @@ class ProductService {
                 },
                 image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
                 badge: this.getTrendingBadge(product),
+                // Parity with the popular feed so cards can show stock state.
+                inventory: {
+                    quantity: product.inventory?.quantity ?? 0,
+                    lowStockAlert: product.inventory?.lowStockAlert ?? 5
+                },
                 stats: {
                     rating: product.metadata.rating,
                     views: product.metadata.views,
@@ -1039,8 +1046,180 @@ class ProductService {
         return shuffled;
     }
 
+    // Whether a product's flash deal is currently running.
+    isDealLive(product) {
+        const deal = product && product.deal;
+        if (!deal || !deal.active) return false;
+        if (!(product.price && product.price.discount > 0)) return false;
+        const now = Date.now();
+        if (deal.startsAt && now < new Date(deal.startsAt).getTime()) return false;
+        if (deal.endsAt && now > new Date(deal.endsAt).getTime()) return false;
+        if (deal.stockLimit != null && (deal.soldCount || 0) >= deal.stockLimit) return false;
+        return true;
+    }
 
+    // GET /products/deals — active, in-window flash sales, soonest-ending first.
+    async getDeals(query = {}) {
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 100);
+        const now = new Date();
 
+        const candidates = await MarketProduct.find({
+            status: 'active',
+            'deal.active': true,
+            'price.discount': { $gt: 0 },
+            $and: [
+                { $or: [{ 'deal.startsAt': { $exists: false } }, { 'deal.startsAt': null }, { 'deal.startsAt': { $lte: now } }] },
+                { $or: [{ 'deal.endsAt': { $exists: false } }, { 'deal.endsAt': null }, { 'deal.endsAt': { $gte: now } }] },
+            ],
+        })
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName isTrustedSeller')
+            .sort({ 'deal.endsAt': 1 })
+            .lean();
+
+        // Final guard for the stock cap (can't express cleanly in the query).
+        const products = candidates
+            .filter((p) => p.deal.stockLimit == null || (p.deal.soldCount || 0) < p.deal.stockLimit)
+            .slice(0, limit);
+
+        return { products, total: products.length };
+    }
+
+    // GET /products/suggestions?q= — lightweight typeahead for the search box.
+    // Returns category, brand and product-name matches (products carry an image
+    // + id so the UI can deep-link straight to the product).
+    async getSearchSuggestions(query = {}) {
+        const q = (query.q || '').trim();
+        if (q.length < 1) return { suggestions: [] };
+
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 8, 1), 20);
+        const regex = { $regex: q, $options: 'i' };
+
+        const imageUrl = (images) => {
+            if (!images || images.length === 0) return null;
+            return (images.find((i) => i.isDefault) || images[0]).url || null;
+        };
+
+        const [products, categories] = await Promise.all([
+            MarketProduct.find({ status: 'active', $or: [{ name: regex }, { brand: regex }] })
+                .select('name brand images metadata.views')
+                .sort('-metadata.views')
+                .limit(limit)
+                .lean(),
+            MarketCategory.find({ name: regex }).select('name').limit(3).lean(),
+        ]);
+
+        const suggestions = [];
+        const seen = new Set();
+
+        for (const c of categories) {
+            const key = `c:${c.name.toLowerCase()}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            suggestions.push({ type: 'category', text: c.name });
+        }
+
+        for (const p of products) {
+            const key = `p:${String(p._id)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            suggestions.push({
+                type: 'product',
+                text: p.name,
+                productId: p._id,
+                image: imageUrl(p.images),
+            });
+        }
+
+        return { suggestions: suggestions.slice(0, limit + 3) };
+    }
+
+    // Record (or refresh) a signed-in user's view of a product.
+    async recordProductView(userId, productId) {
+        if (!userId || !mongoose.Types.ObjectId.isValid(productId)) return;
+        await MarketRecentlyViewed.findOneAndUpdate(
+            { userId, productId },
+            { $set: { viewedAt: new Date() } },
+            { upsert: true, new: true }
+        );
+    }
+
+    // GET /products/recently-viewed — newest first.
+    async getRecentlyViewed(userId, query = {}) {
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 12, 1), 50);
+        const rows = await MarketRecentlyViewed.find({ userId })
+            .sort('-viewedAt')
+            .limit(limit)
+            .lean();
+
+        const ids = rows.map((r) => r.productId);
+        if (ids.length === 0) return { products: [], total: 0 };
+
+        const products = await MarketProduct.find({ _id: { $in: ids }, status: 'active' })
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName isTrustedSeller')
+            .lean();
+
+        // Preserve recency order (find() doesn't honour the $in order).
+        const byId = new Map(products.map((p) => [String(p._id), p]));
+        const ordered = ids.map((id) => byId.get(String(id))).filter(Boolean);
+        return { products: ordered, total: ordered.length };
+    }
+
+    // GET /products/for-you — personalised from the user's viewed + ordered
+    // categories, with a trending fallback for new users.
+    async getForYou(userId, query = {}) {
+        const limit = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 50);
+
+        // Seed products = recently viewed + previously ordered.
+        const recents = await MarketRecentlyViewed.find({ userId }).sort('-viewedAt').limit(40).lean();
+        const recentIds = recents.map((r) => String(r.productId));
+
+        const myOrders = await MarketOrder.find({ customerId: userId }).select('_id').lean();
+        const orderItemDocs = myOrders.length
+            ? await MarketOrderItem.find({ orderId: { $in: myOrders.map((o) => o._id) } }).select('productId').lean()
+            : [];
+        const orderedIds = orderItemDocs.map((i) => String(i.productId));
+
+        const seedIds = [...new Set([...recentIds, ...orderedIds])];
+
+        const populate = (q) => q
+            .populate('category', 'name')
+            .populate('sellerId', 'businessName isTrustedSeller');
+
+        let products = [];
+        if (seedIds.length > 0) {
+            const seeds = await MarketProduct.find({ _id: { $in: seedIds } }).select('category').lean();
+            const categoryIds = [...new Set(seeds.map((p) => String(p.category)).filter(Boolean))];
+
+            if (categoryIds.length > 0) {
+                const candidates = await populate(MarketProduct.find({
+                    status: 'active',
+                    category: { $in: categoryIds },
+                    _id: { $nin: seedIds },
+                }))
+                    .sort({ 'metadata.rating.average': -1, 'metadata.views': -1 })
+                    .limit(limit * 2)
+                    .lean();
+                products = this.shuffleArray(candidates).slice(0, limit);
+            }
+        }
+
+        // Top up (or fully populate for new users) with popular active products.
+        if (products.length < limit) {
+            const exclude = [...seedIds, ...products.map((p) => String(p._id))];
+            const fill = await populate(MarketProduct.find({
+                status: 'active',
+                _id: { $nin: exclude },
+            }))
+                .sort('-metadata.views')
+                .limit(limit - products.length)
+                .lean();
+            products = [...products, ...fill];
+        }
+
+        return { products, total: products.length };
+    }
 
 }
 

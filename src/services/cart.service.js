@@ -1,12 +1,13 @@
 const MarketCart = require('../models/MarketCart');
 const MarketProduct = require('../models/MarketProduct');
 const mongoose = require('mongoose');
+const { findVariant, resolvePurchasable } = require('../utils/variant');
 
 class CartService {
     /**
      * Add product to cart
      */
-    async addToCart(userId, productId, quantity, sellerId) {
+    async addToCart(userId, productId, quantity, sellerId, variantId = null) {
         // Validate quantity
         if (!quantity || quantity < 1) {
             throw { status: 400, message: 'Quantity must be at least 1' };
@@ -18,20 +19,33 @@ class CartService {
             throw { status: 404, message: 'Product not found' };
         }
 
-        // Check stock availability
-        if (product.inventory.quantity < quantity) {
-            throw { 
-                status: 409, 
+        // Resolve the chosen variant (if any) for stock + price.
+        let variant = null;
+        if (variantId) {
+            variant = findVariant(product, variantId);
+            if (!variant) {
+                throw { status: 400, message: 'Selected variant is not available' };
+            }
+        } else if (Array.isArray(product.variants) && product.variants.length > 0) {
+            throw { status: 400, message: 'Please select a variant for this product' };
+        }
+        const purchasable = resolvePurchasable(product, variant);
+
+        // Check stock availability against the variant (or base inventory).
+        if (purchasable.stock < quantity) {
+            throw {
+                status: 409,
                 message: 'Insufficient product stock',
-                available: product.inventory.quantity,
+                available: purchasable.stock,
                 requested: quantity
             };
         }
 
-        // Check if item already in cart
+        // Check if this same product+variant is already in the cart.
         const existingItem = await MarketCart.findOne({
             userId,
             productId,
+            variantId: variantId || null,
             isDeleted: false
         });
 
@@ -45,7 +59,10 @@ class CartService {
             productId,
             sellerId,
             quantity,
-            price: product.price.current
+            price: purchasable.price,
+            variantId: variantId || null,
+            variantLabel: purchasable.label,
+            variantImage: purchasable.image
         });
 
         await cartItem.save();
@@ -91,17 +108,19 @@ class CartService {
             throw { status: 404, message: 'Cart item not found' };
         }
 
-        // Check stock availability
+        // Check stock availability (against the selected variant when present).
         const product = await MarketProduct.findById(cartItem.productId);
         if (!product) {
             throw { status: 404, message: 'Product not found' };
         }
 
-        if (product.inventory.quantity < quantity) {
-            throw { 
-                status: 409, 
+        const variant = cartItem.variantId ? findVariant(product, cartItem.variantId) : null;
+        const availableStock = variant ? (variant.stock ?? 0) : product.inventory.quantity;
+        if (availableStock < quantity) {
+            throw {
+                status: 409,
                 message: 'Insufficient product stock',
-                available: product.inventory.quantity,
+                available: availableStock,
                 requested: quantity
             };
         }
@@ -202,6 +221,9 @@ class CartService {
                 },
                 price: item.price,
                 subtotal: item.price * item.quantity,
+                variantId: item.variantId || null,
+                variantLabel: item.variantLabel || null,
+                variantImage: item.variantImage || null,
                 addedAt: item.addedAt
             })),
             summary: {

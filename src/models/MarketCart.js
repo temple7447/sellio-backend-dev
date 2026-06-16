@@ -29,6 +29,20 @@ const cartItemSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    // Selected product variant (optional). References an embedded
+    // product.variants subdocument by its _id; label is denormalised for display.
+    variantId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+    },
+    variantLabel: {
+        type: String,
+        default: null
+    },
+    variantImage: {
+        type: String,
+        default: null
+    },
     addedAt: {
         type: Date,
         default: Date.now

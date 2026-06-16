@@ -29,7 +29,22 @@ const reviewSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: '',
-  }
+  },
+  // Buyer-uploaded photos (urls produced by POST /media/upload).
+  images: [{
+    url: { type: String, required: true },
+  }],
+  // "Helpful" voting — helpfulBy guards against double-voting; helpfulCount
+  // is denormalised for cheap sorting.
+  helpfulBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MarketUser',
+  }],
+  helpfulCount: {
+    type: Number,
+    default: 0,
+    index: true,
+  },
 }, {
   timestamps: true,
 });

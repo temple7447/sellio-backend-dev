@@ -25,11 +25,23 @@ class ReviewController {
 
   async listProductReviews(req, res) {
     try {
-      const result = await reviewService.listProductReviews(req.params.productId, req.query);
+      // optionalAuth may have attached req.user — used to flag the viewer's votes.
+      const viewerId = req.user?._id || null;
+      const result = await reviewService.listProductReviews(req.params.productId, req.query, viewerId);
       res.status(200).json(result);
     } catch (error) {
       console.error(chalk.red('✗ Fetching product reviews failed:'), error?.message || error);
       res.status(error.status || 500).json({ message: error.message || 'Failed to fetch reviews' });
+    }
+  }
+
+  async markReviewHelpful(req, res) {
+    try {
+      const result = await reviewService.toggleHelpful(req.params.reviewId, req.user._id);
+      res.status(200).json(result);
+    } catch (error) {
+      console.error(chalk.red('✗ Toggling review helpful failed:'), error?.message || error);
+      res.status(error.status || 400).json({ message: error.message || 'Failed to update review' });
     }
   }
 }

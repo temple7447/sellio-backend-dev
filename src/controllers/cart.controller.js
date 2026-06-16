@@ -4,11 +4,11 @@ const chalk = require('chalk');
 class CartController {
     async addToCart(req, res) {
         try {
-            const { productId, quantity, sellerId } = req.body;
+            const { productId, quantity, sellerId, variantId } = req.body;
 
             if (!productId || !quantity || !sellerId) {
-                return res.status(400).json({ 
-                    message: 'Missing required fields: productId, quantity, sellerId' 
+                return res.status(400).json({
+                    message: 'Missing required fields: productId, quantity, sellerId'
                 });
             }
 
@@ -16,7 +16,8 @@ class CartController {
                 req.user._id,
                 productId,
                 quantity,
-                sellerId
+                sellerId,
+                variantId || null
             );
 
             console.log(chalk.green(`✓ Product ${productId} added to cart for user ${req.user._id}`));

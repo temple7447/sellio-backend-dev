@@ -93,7 +93,48 @@ const productSchema = new mongoose.Schema({
             type: Number,
             default: 0
         }
-    }
+    },
+    // Time-boxed flash sale. The discount itself lives in `price.discount` so
+    // every pricing path stays correct; this only adds the countdown window and
+    // scarcity (how many of the allocated units are gone).
+    deal: {
+        active: {
+            type: Boolean,
+            default: false
+        },
+        startsAt: Date,
+        endsAt: Date,
+        // Units allocated to the flash sale (optional — omit for no cap).
+        stockLimit: {
+            type: Number,
+            min: 0
+        },
+        soldCount: {
+            type: Number,
+            default: 0,
+            min: 0
+        }
+    },
+    // Optional product variations (Temu-style). `options` lists the choosable
+    // dimensions (e.g. Color, Size); `variants` are the concrete combinations,
+    // each with its own stock and optional price/image. Products without
+    // variants behave exactly as before (base price + inventory.quantity).
+    options: [{
+        name: { type: String, trim: true },      // e.g. "Color"
+        values: [{ type: String, trim: true }]   // e.g. ["Red", "Blue"]
+    }],
+    variants: [{
+        attributes: [{
+            name: { type: String, trim: true },   // "Color"
+            value: { type: String, trim: true }    // "Red"
+        }],
+        // Absolute buyer-facing price for this variant. Falls back to
+        // price.current when omitted.
+        price: { type: Number, min: 0 },
+        stock: { type: Number, default: 0, min: 0 },
+        sku: { type: String, trim: true },
+        image: { type: String }
+    }]
 }, {
     timestamps: true
 });

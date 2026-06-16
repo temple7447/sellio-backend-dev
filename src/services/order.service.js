@@ -7,6 +7,7 @@ const mongoose = require('mongoose');  // Add this import at the top
 const chalk = require('chalk');
 const RewardSettings = require('../models/RewardSettings');
 const walletService = require('./wallet.service');
+const { findVariant, resolvePurchasable } = require('../utils/variant');
 
 const generateTrackingNumber = () => {
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -42,15 +43,24 @@ class OrderService {
                 throw { status: 400, message: `Product ${item.productId} not found` };
             }
 
-            if (product.inventory.quantity < item.quantity) {
+            // Resolve the chosen variant (if any) for stock + price.
+            const variant = item.variantId ? findVariant(product, item.variantId) : null;
+            if (item.variantId && !variant) {
+                throw { status: 400, message: `Selected variant unavailable for ${product.name}` };
+            }
+            const purchasable = resolvePurchasable(product, variant);
+
+            if (purchasable.stock < item.quantity) {
                 throw {
                     status: 400,
                     message: `Insufficient inventory for ${product.name}`
                 };
             }
 
-            const itemPrice = product.price.current;   // buyer-facing price (with platform fee)
-            const itemSellerPrice = product.price.sellerPrice ?? product.price.current; // seller earns this
+            const itemPrice = purchasable.price;   // buyer-facing price (with platform fee)
+            const itemSellerPrice = variant && variant.price != null
+                ? variant.price
+                : (product.price.sellerPrice ?? product.price.current); // seller earns this
             const itemTotal = itemPrice * item.quantity;
             subtotal += itemTotal;
 
@@ -60,6 +70,8 @@ class OrderService {
                 quantity: item.quantity,
                 price: itemPrice,
                 sellerPrice: itemSellerPrice,
+                variantId: variant ? variant._id : null,
+                variantLabel: purchasable.label,
             });
         }
 
@@ -98,6 +110,8 @@ class OrderService {
                 quantity: item.quantity,
                 price: item.price,
                 sellerPrice: item.sellerPrice,
+                variantId: item.variantId || null,
+                variantLabel: item.variantLabel || null,
                 status: 'pending'
             }).save();
         });
@@ -151,15 +165,24 @@ class OrderService {
                     throw { status: 400, message: `Product ${item.productId} not found` };
                 }
 
-                if (product.inventory.quantity < item.quantity) {
+                // Resolve the chosen variant (if any) for stock + price.
+                const variant = item.variantId ? findVariant(product, item.variantId) : null;
+                if (item.variantId && !variant) {
+                    throw { status: 400, message: `Selected variant unavailable for ${product.name}` };
+                }
+                const purchasable = resolvePurchasable(product, variant);
+
+                if (purchasable.stock < item.quantity) {
                     throw {
                         status: 400,
                         message: `Insufficient inventory for ${product.name}`
                     };
                 }
 
-                const itemPrice = product.price.current;   // buyer-facing price (with platform fee)
-                const itemSellerPrice = product.price.sellerPrice ?? product.price.current; // seller earns this
+                const itemPrice = purchasable.price;   // buyer-facing price (with platform fee)
+                const itemSellerPrice = variant && variant.price != null
+                    ? variant.price
+                    : (product.price.sellerPrice ?? product.price.current); // seller earns this
                 const itemTotal = itemPrice * item.quantity;
                 subtotal += itemTotal;
 
@@ -169,6 +192,8 @@ class OrderService {
                     quantity: item.quantity,
                     price: itemPrice,
                     sellerPrice: itemSellerPrice,
+                    variantId: variant ? variant._id : null,
+                    variantLabel: purchasable.label,
                 });
             }
 
@@ -212,6 +237,8 @@ class OrderService {
                     quantity: item.quantity,
                     price: item.price,
                     sellerPrice: item.sellerPrice,
+                    variantId: item.variantId || null,
+                    variantLabel: item.variantLabel || null,
                     status: 'pending'
                 }).save();
             });
@@ -309,14 +336,23 @@ class OrderService {
                 const orderItems = await MarketOrderItem.find({ orderId: order._id }).populate('productId');
 
                 for (const item of orderItems) {
-                    await MarketProduct.findByIdAndUpdate(
-                        item.productId,
-                        {
-                            $inc: {
-                                'inventory.quantity': -item.quantity,
-                                'metadata.sales': item.quantity
-                            }
-                        }
+                    if (item.variantId) {
+                        // Decrement the specific variant's stock.
+                        await MarketProduct.updateOne(
+                            { _id: item.productId },
+                            { $inc: { 'variants.$[v].stock': -item.quantity, 'metadata.sales': item.quantity } },
+                            { arrayFilters: [{ 'v._id': item.variantId }] }
+                        );
+                    } else {
+                        await MarketProduct.findByIdAndUpdate(
+                            item.productId,
+                            { $inc: { 'inventory.quantity': -item.quantity, 'metadata.sales': item.quantity } }
+                        );
+                    }
+                    // Advance flash-sale scarcity only when a deal is currently active.
+                    await MarketProduct.updateOne(
+                        { _id: item.productId, 'deal.active': true },
+                        { $inc: { 'deal.soldCount': item.quantity } }
                     );
                     // Update item status to confirmed
                     item.status = 'confirmed';
@@ -1406,10 +1442,18 @@ class OrderService {
         
         const MarketProduct = require('../models/MarketProduct');
         for (const item of orderItems) {
-            await MarketProduct.updateOne(
-                { _id: item.productId },
-                { $inc: { 'inventory.quantity': item.quantity } }
-            );
+            if (item.variantId) {
+                await MarketProduct.updateOne(
+                    { _id: item.productId },
+                    { $inc: { 'variants.$[v].stock': item.quantity } },
+                    { arrayFilters: [{ 'v._id': item.variantId }] }
+                );
+            } else {
+                await MarketProduct.updateOne(
+                    { _id: item.productId },
+                    { $inc: { 'inventory.quantity': item.quantity } }
+                );
+            }
         }
 
         // Update order status
@@ -1455,10 +1499,18 @@ class OrderService {
         const orderItems = await MarketOrderItem.find({ orderId: order._id });
 
         for (const item of orderItems) {
-            await MarketProduct.updateOne(
-                { _id: item.productId },
-                { $inc: { 'inventory.quantity': item.quantity } }
-            );
+            if (item.variantId) {
+                await MarketProduct.updateOne(
+                    { _id: item.productId },
+                    { $inc: { 'variants.$[v].stock': item.quantity } },
+                    { arrayFilters: [{ 'v._id': item.variantId }] }
+                );
+            } else {
+                await MarketProduct.updateOne(
+                    { _id: item.productId },
+                    { $inc: { 'inventory.quantity': item.quantity } }
+                );
+            }
         }
 
         // Cancel all order items
@@ -1854,14 +1906,22 @@ class OrderService {
         const orderItems = await MarketOrderItem.find({ orderId: order._id }).populate('productId');
 
         for (const item of orderItems) {
-            await MarketProduct.findByIdAndUpdate(
-                item.productId,
-                {
-                    $inc: {
-                        'inventory.quantity': -item.quantity,
-                        'metadata.sales': item.quantity
-                    }
-                }
+            const productRef = item.productId?._id || item.productId;
+            if (item.variantId) {
+                await MarketProduct.updateOne(
+                    { _id: productRef },
+                    { $inc: { 'variants.$[v].stock': -item.quantity, 'metadata.sales': item.quantity } },
+                    { arrayFilters: [{ 'v._id': item.variantId }] }
+                );
+            } else {
+                await MarketProduct.findByIdAndUpdate(
+                    productRef,
+                    { $inc: { 'inventory.quantity': -item.quantity, 'metadata.sales': item.quantity } }
+                );
+            }
+            await MarketProduct.updateOne(
+                { _id: productRef, 'deal.active': true },
+                { $inc: { 'deal.soldCount': item.quantity } }
             );
             // Update item status to confirmed
             item.status = 'confirmed';
@@ -2100,16 +2160,19 @@ class OrderService {
             );
         }
 
-        // 2. Restock inventory
-        await MarketProduct.findByIdAndUpdate(
-            item.productId,
-            {
-                $inc: {
-                    'inventory.quantity': item.quantity,
-                    'metadata.sales': -item.quantity
-                }
-            }
-        );
+        // 2. Restock inventory (variant-aware)
+        if (item.variantId) {
+            await MarketProduct.updateOne(
+                { _id: item.productId },
+                { $inc: { 'variants.$[v].stock': item.quantity, 'metadata.sales': -item.quantity } },
+                { arrayFilters: [{ 'v._id': item.variantId }] }
+            );
+        } else {
+            await MarketProduct.findByIdAndUpdate(
+                item.productId,
+                { $inc: { 'inventory.quantity': item.quantity, 'metadata.sales': -item.quantity } }
+            );
+        }
 
         // 3. Update item status
         item.status = 'cancelled';

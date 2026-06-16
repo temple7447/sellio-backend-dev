@@ -28,6 +28,15 @@ const orderItemSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    // Snapshot of the chosen variant at purchase time (optional).
+    variantId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+    },
+    variantLabel: {
+        type: String,
+        default: null
+    },
     // Per-unit amount credited to the seller (seller's listed price before platform fee).
     // May equal price when no fee tiers exist (legacy products).
     sellerPrice: {

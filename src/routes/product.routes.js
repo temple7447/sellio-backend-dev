@@ -17,6 +17,13 @@ router.post('/', auth, isSeller, isVerified, isAdminVerified, upload.array('imag
 router.get('/public', productController.getPublicProducts);
 router.get('/trending', productController.getTrendingProducts);
 router.get('/popular', productController.getPopularProducts);
+router.get('/deals', productController.getDeals);
+router.get('/suggestions', productController.getSearchSuggestions);
+
+// Personalisation (authenticated)
+router.get('/for-you', auth, productController.getForYou);
+router.get('/recently-viewed', auth, productController.getRecentlyViewed);
+router.post('/recently-viewed/:productId', auth, productController.recordProductView);
 router.get('/public/:id', productController.getPublicProductById);
 router.get('/public/seller/:sellerId/products', productController.getPublicSellerProducts);
 
