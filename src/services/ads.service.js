@@ -317,16 +317,45 @@ class AdsService {
             sellerId: { $in: sellerIds },
             status: 'active'
         })
-            .populate('sellerId', 'name avatar')
+            .populate('sellerId', 'businessName isTrustedSeller')
             .populate('category', 'name')
             .limit(Number(limit))
             .sort({ 'metadata.sales': -1 });
 
-        const productsWithCampaign = products.map(product => {
-            const productObj = product.toObject();
-            productObj.campaignId = campaignBySeller[product.sellerId._id.toString()];
-            return productObj;
-        });
+        // Return the same flat card DTO as trending/popular so product cards get
+        // a complete set of fields (id, image, seller, rating, stock, sold…).
+        const productsWithCampaign = products.map(product => ({
+            id: product._id,
+            name: product.name,
+            slug: product.slug,
+            description: product.description,
+            price: {
+                current: product.price.current,
+                discount: product.price.discount || 0,
+                compareAt: product.price.compareAt
+            },
+            category: product.category ? {
+                id: product.category._id,
+                name: product.category.name
+            } : undefined,
+            seller: product.sellerId ? {
+                id: product.sellerId._id,
+                businessName: product.sellerId.businessName,
+                isTrustedSeller: product.sellerId.isTrustedSeller || false
+            } : undefined,
+            image: product.images.find(img => img.isDefault)?.url || product.images[0]?.url,
+            badge: null,
+            inventory: {
+                quantity: product.inventory?.quantity ?? 0,
+                lowStockAlert: product.inventory?.lowStockAlert ?? 5
+            },
+            stats: {
+                rating: product.metadata.rating,
+                views: product.metadata.views,
+                sales: product.metadata.sales
+            },
+            campaignId: campaignBySeller[product.sellerId._id.toString()]
+        }));
 
         return productsWithCampaign;
     }
